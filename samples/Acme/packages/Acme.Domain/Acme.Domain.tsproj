@@ -1,0 +1,23 @@
+schemaVersion: 1
+kind: Project
+
+metadata:
+  name: Acme.Domain
+  version: 1.0.0
+
+spec:
+  type: library
+  runtime: node
+
+  package:
+    name: "@acme/domain"
+    private: true
+
+  source:
+    root: src
+    entry: src/index.ts
+
+  compiler:
+    target: ES2022
+    module: NodeNext
+    strict: true

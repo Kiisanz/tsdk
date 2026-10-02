@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TSNX Project Manifest",
+  "description": "Configuration schema for TSNX project files (.tsproj)",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "description": "Manifest schema version (currently 1)",
+      "default": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["Project"],
+      "description": "Resource kind, must be 'Project'"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique name of the project"
+        },
+        "version": {
+          "type": "string",
+          "description": "SemVer version string"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["console", "library", "webapi", "worker", "test"],
+          "description": "Project archetype / workload type"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["node", "bun", "deno"],
+          "description": "Target runtime environment",
+          "default": "node"
+        },
+        "package": {
+          "type": "object",
+          "description": "npm packaging specifications",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "npm package name (e.g. @scope/pkg)"
+            },
+            "private": {
+              "type": "boolean",
+              "description": "Prevent accidental publishing to npm registry",
+              "default": false
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "description": "Source tree layout configuration",
+          "properties": {
+            "root": {
+              "type": "string",
+              "description": "Relative directory containing source files",
+              "default": "src"
+            },
+            "entry": {
+              "type": "string",
+              "description": "Entry point file relative to source root",
+              "default": "main.ts"
+            }
+          }
+        },
+        "compiler": {
+          "type": "object",
+          "description": "TypeScript compiler options overrides",
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": ["ES2020", "ES2021", "ES2022", "ES2023", "ESNext"],
+              "description": "ECMAScript target version"
+            },
+            "module": {
+              "type": "string",
+              "enum": ["NodeNext", "Node16", "ESNext"],
+              "description": "Module code generation"
+            },
+            "strict": {
+              "type": "boolean",
+              "description": "Enable all strict type-checking options",
+              "default": true
+            }
+          }
+        },
+        "references": {
+          "type": "array",
+          "description": "Internal project dependencies",
+          "items": {
+            "type": "object",
+            "required": ["project"],
+            "properties": {
+              "project": {
+                "type": "string",
+                "description": "Name of the referenced project in the workspace"
+              },
+              "path": {
+                "type": "string",
+                "description": "Optional relative path to the project directory"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

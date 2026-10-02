@@ -1,0 +1,41 @@
+{
+  "name": "@tsnx/cli",
+  "version": "0.3.0",
+  "description": "TSNX CLI - Developer interface for TypeScript projects and workspaces",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "tsnx": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.tsbuildinfo",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --test --test-concurrency=1 dist/__tests__/**/*.test.js"
+  },
+  "dependencies": {
+    "@tsnx/build": "workspace:*",
+    "@tsnx/core": "workspace:*",
+    "yaml": "^2.9.1"
+  }
+}

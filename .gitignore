@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+*.tgz
+.tsdk/
+.tsnx/
+*.vsix
+
+# Internal
+AGENTS.md
+HANDOFF.md

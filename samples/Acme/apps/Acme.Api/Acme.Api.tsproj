@@ -1,0 +1,26 @@
+schemaVersion: 1
+kind: Project
+
+metadata:
+  name: Acme.Api
+  version: 1.0.0
+
+spec:
+  type: webapi
+  runtime: node
+
+  package:
+    name: "@acme/api"
+    private: true
+
+  source:
+    root: src
+    entry: src/main.ts
+
+  compiler:
+    target: ES2022
+    module: NodeNext
+    strict: true
+
+  references:
+    - project: Acme.Domain

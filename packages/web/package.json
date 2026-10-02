@@ -1,0 +1,37 @@
+{
+  "name": "@tsnx/web",
+  "version": "0.3.0",
+  "description": "TSNX Web API Foundation - HTTP server, routing, middleware pipeline, and request-scoped lifecycle",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.tsbuildinfo",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --test dist/__tests__/**/*.test.js"
+  },
+  "dependencies": {
+    "@tsnx/hosting": "workspace:*",
+    "@types/node": "^22.13.9"
+  }
+}
