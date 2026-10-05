@@ -21,8 +21,10 @@ Usage:
   tsnx <command> [options]
 
 Commands:
-  create <template> <name>   Create a new project (options: --no-install, --package-manager)
-  init workspace [name]      Initialize a new solution workspace (options: -n, --scope, --no-scope)
+  create <template> <name>   Create a new project (templates: console, library, webapi)
+  workspace init [name]      Initialize a new solution workspace (options: -n, --scope, --no-scope)
+  workspace add <path>       Register an existing project into the nearest workspace
+  workspace remove <target>  Unregister a project from workspace references (options: --delete)
   run [options] [args...]    Build and run project (options: --project, -p, --no-build)
   watch [args...]            Watch for changes, rebuild incrementally, and restart app
   test                       Run project tests using dependency graph
@@ -33,7 +35,6 @@ Commands:
   graph                      Visualize dependency relationships and build order
   ref add <target>           Add a project reference to current project
   ref remove <target>        Remove a project reference and workspace dependency
-  workspace <subcommand>     Workspace commands (init, add)
 
 Options:
   --workspace, -w            Operate on the entire workspace instead of current project
@@ -47,7 +48,14 @@ Options:
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
-  if (rawArgs.length === 0 || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  if (rawArgs.length === 0) {
+    printHelp();
+    process.exit(0);
+  }
+
+  const command = rawArgs[0];
+
+  if (command === '--help' || command === '-h' || command === 'help') {
     printHelp();
     process.exit(0);
   }
@@ -57,14 +65,20 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const command = rawArgs[0];
+  // If help requested on a command that doesn't have its own help handler, show global help
+  const commandsWithSubHelp = ['create', 'workspace', 'ref'];
+  if (!commandsWithSubHelp.includes(command) && (rawArgs.includes('--help') || rawArgs.includes('-h'))) {
+    printHelp();
+    process.exit(0);
+  }
+
   const subCommand = rawArgs[1];
 
   const forceWorkspace = rawArgs.includes('--workspace') || rawArgs.includes('-w');
   const rebuild = rawArgs.includes('--rebuild') || rawArgs.includes('-r') || rawArgs.includes('--force');
   const verbose = rawArgs.includes('--verbose') || rawArgs.includes('-v');
 
-  // Discover context from cwd (prioritizing nearest .tsproj unless --workspace is passed)
+  // Discover context from cwd
   const context = findContext(process.cwd(), forceWorkspace);
 
   let exitCode = 0;
@@ -76,7 +90,7 @@ async function main(): Promise<void> {
 
     case 'run': {
       if (!context) {
-        console.error('[TSNX Error] No project (*.tsproj) or workspace (*.tswork) found in current directory or parent directories.');
+        console.error('[TSNX Error] No project or workspace found in current directory or parent directories.');
         process.exit(1);
       }
       // Pass remaining args after 'run'
@@ -107,12 +121,8 @@ async function main(): Promise<void> {
     }
 
     case 'init':
-      if (subCommand === 'workspace') {
-        exitCode = runWorkspace('init', rawArgs.slice(2), context, true);
-      } else {
-        console.error(`[TSNX Error] Unknown init target: "${subCommand}". Supported: tsnx init workspace [options]`);
-        exitCode = 1;
-      }
+      console.error('[TSNX Error] "tsnx init" is not a command. To initialize a workspace, run: tsnx workspace init [name]');
+      exitCode = 1;
       break;
 
     case 'workspace':
@@ -123,7 +133,7 @@ async function main(): Promise<void> {
       if (!context) {
         reportMissingContext(forceWorkspace);
       }
-      exitCode = runRef(subCommand, rawArgs.slice(2), context);
+      exitCode = await runRef(subCommand, rawArgs.slice(2), context);
       break;
 
     case 'build':
@@ -176,9 +186,9 @@ async function main(): Promise<void> {
 
 function reportMissingContext(forceWorkspace: boolean): never {
   if (forceWorkspace) {
-    console.error('[TSNX Error] No workspace (*.tswork) found in current directory or parent directories.');
+    console.error('[TSNX Error] No workspace found in current directory or parent directories.');
   } else {
-    console.error('[TSNX Error] No project (*.tsproj) or workspace (*.tswork) found in current directory or parent directories.');
+    console.error('[TSNX Error] No project or workspace found in current directory or parent directories.');
   }
   process.exit(1);
 }

@@ -155,4 +155,37 @@ describe('Native Project System (tsconfig.json + package.json)', () => {
     assert.ok(domain);
     assert.strictEqual(domain.type, 'library');
   });
+
+  test('handles JSONC with comments and trailing commas in tsconfig.json and package.json', () => {
+    const wsDir = path.join(tmpDir, 'JsoncWs');
+    fs.mkdirSync(wsDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(wsDir, 'package.json'),
+      `{
+        // Root package manifest
+        "name": "my-jsonc-workspace",
+        "private": true,
+        "workspaces": [
+          "apps/*",
+        ],
+      }`,
+    );
+
+    fs.writeFileSync(
+      path.join(wsDir, 'tsconfig.json'),
+      `{
+        /* Multi-line comment
+           for solution config */
+        "files": [],
+        "references": [
+          // Project references here
+        ],
+      }`,
+    );
+
+    assert.strictEqual(isNativeWorkspace(wsDir), true);
+    const ws = TsWorkspace.loadSync(wsDir);
+    assert.strictEqual(ws.name, 'my-jsonc-workspace');
+  });
 });

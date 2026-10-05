@@ -27,12 +27,12 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       assert.ok(createOutput.includes('Project created successfully!'));
 
       const projectDir = path.join(tmpDir, 'HelloWorld');
-      assert.ok(fs.existsSync(path.join(projectDir, 'HelloWorld.tsproj')));
+      assert.ok(fs.existsSync(path.join(projectDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'src', 'main.ts')));
 
       // Verify loaded as valid TsProject
-      const proj = TsProject.loadSync(path.join(projectDir, 'HelloWorld.tsproj'));
+      const proj = TsProject.loadSync(projectDir);
       assert.equal(proj.name, 'HelloWorld');
       assert.equal(proj.type, 'console');
 
@@ -65,11 +65,11 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       assert.ok(createOutput.includes('Project created successfully!'));
 
       const projectDir = path.join(tmpDir, 'MyLib');
-      assert.ok(fs.existsSync(path.join(projectDir, 'MyLib.tsproj')));
+      assert.ok(fs.existsSync(path.join(projectDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'src', 'index.ts')));
 
-      const proj = TsProject.loadSync(path.join(projectDir, 'MyLib.tsproj'));
+      const proj = TsProject.loadSync(projectDir);
       assert.equal(proj.name, 'MyLib');
       assert.equal(proj.type, 'library');
 
@@ -90,7 +90,7 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-scaffold-ws-'));
 
     try {
-      // 1. tsdk workspace init AcmeDemo
+      // 1. tsnx workspace init AcmeDemo
       const initOutput = execFileSync(
         process.execPath,
         [CLI_BIN, 'workspace', 'init', 'AcmeDemo'],
@@ -100,10 +100,11 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
         },
       );
       assert.ok(initOutput.includes('Initialized workspace "AcmeDemo"'));
-      assert.ok(fs.existsSync(path.join(tmpDir, 'AcmeDemo.tswork')));
+      assert.ok(fs.existsSync(path.join(tmpDir, 'tsconfig.json')));
+      assert.ok(fs.existsSync(path.join(tmpDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(tmpDir, 'pnpm-workspace.yaml')));
 
-      // 2. Create console app inside workspace root: should auto-register in AcmeDemo.tswork
+      // 2. Create console app inside workspace root: should auto-register in root tsconfig.json
       const createOutput = execFileSync(
         process.execPath,
         [CLI_BIN, 'create', 'console', 'MyCli'],
@@ -115,7 +116,7 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       assert.ok(createOutput.includes('Registered project in workspace "AcmeDemo"'));
 
       // Verify workspace registry
-      const ws = TsWorkspace.loadSync(path.join(tmpDir, 'AcmeDemo.tswork'));
+      const ws = TsWorkspace.loadSync(tmpDir);
       assert.equal(ws.projects.length, 1);
       assert.equal(ws.projects[0].name, 'MyCli');
 
@@ -173,28 +174,32 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       );
       assert.ok(refOutput.includes('Added reference to "CoreLib"'));
 
-      // Verify Runner.tsproj contains CoreLib reference
-      const runnerTsp = fs.readFileSync(path.join(runnerDir, 'Runner.tsproj'), 'utf-8');
-      assert.ok(runnerTsp.includes('CoreLib'));
+      // Verify Runner tsconfig.json contains CoreLib reference
+      const runnerTsconfig = JSON.parse(
+        fs.readFileSync(path.join(runnerDir, 'tsconfig.json'), 'utf-8'),
+      );
+      assert.ok(runnerTsconfig.references.some((r: any) => r.path === '../CoreLib'));
 
       // Verify Runner package.json contains workspace:*
       const runnerPkg = JSON.parse(
         fs.readFileSync(path.join(runnerDir, 'package.json'), 'utf-8'),
       );
-      assert.ok(runnerPkg.dependencies && runnerPkg.dependencies['core-lib'] === 'workspace:*');
+      assert.ok(runnerPkg.dependencies && runnerPkg.dependencies['@flowapp/core-lib'] === 'workspace:*');
 
       // 4. Update Runner/src/main.ts to call CoreLib
       fs.writeFileSync(
         path.join(runnerDir, 'src', 'main.ts'),
-        `import { add } from 'core-lib';
+        `import { add } from '@flowapp/core-lib';
 console.log('Calculation:', add(10, 25));
 `,
       );
 
-      // Link node_modules for local package resolution
-      const runnerModules = path.join(runnerDir, 'node_modules');
-      fs.mkdirSync(runnerModules, { recursive: true });
-      fs.symlinkSync(coreLibDir, path.join(runnerModules, 'core-lib'), 'junction');
+      // Link node_modules for local package resolution if not already linked by tsnx ref add
+      const runnerModules = path.join(runnerDir, 'node_modules', '@flowapp');
+      if (!fs.existsSync(path.join(runnerModules, 'core-lib'))) {
+        fs.mkdirSync(runnerModules, { recursive: true });
+        fs.symlinkSync(coreLibDir, path.join(runnerModules, 'core-lib'), 'junction');
+      }
 
       // 5. tsdk build --workspace
       const buildOutput = execFileSync(
@@ -236,12 +241,12 @@ console.log('Calculation:', add(10, 25));
       assert.ok(createOutput.includes('Project created successfully!'));
 
       const apiDir = path.join(tmpDir, 'MyApi');
-      assert.ok(fs.existsSync(path.join(apiDir, 'MyApi.tsproj')));
+      assert.ok(fs.existsSync(path.join(apiDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(apiDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(apiDir, 'src', 'main.ts')));
 
       // Verify loaded as valid TsProject with spec.type: webapi
-      const proj = TsProject.loadSync(path.join(apiDir, 'MyApi.tsproj'));
+      const proj = TsProject.loadSync(apiDir);
       assert.equal(proj.name, 'MyApi');
       assert.equal(proj.type, 'webapi');
 
@@ -359,7 +364,7 @@ console.log('Calculation:', add(10, 25));
       assert.ok(createHostOutput.includes('cd apps/ArasHRMS.Host'));
 
       const hostDir = path.join(tmpDir, 'apps', 'ArasHRMS.Host');
-      assert.ok(fs.existsSync(path.join(hostDir, 'ArasHRMS.Host.tsproj')));
+      assert.ok(fs.existsSync(path.join(hostDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(hostDir, 'src', 'main.ts')));
 
       // 3. tsnx create library -n ArasHRMS.Core -o packages --no-install
@@ -377,11 +382,11 @@ console.log('Calculation:', add(10, 25));
       assert.ok(createCoreOutput.includes('cd packages/ArasHRMS.Core'));
 
       const coreDir = path.join(tmpDir, 'packages', 'ArasHRMS.Core');
-      assert.ok(fs.existsSync(path.join(coreDir, 'ArasHRMS.Core.tsproj')));
+      assert.ok(fs.existsSync(path.join(coreDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(coreDir, 'src', 'index.ts')));
 
       // 4. Verify workspace has both registered
-      const ws = TsWorkspace.loadSync(path.join(tmpDir, 'MySolution.tswork'));
+      const ws = TsWorkspace.loadSync(tmpDir);
       assert.equal(ws.projects.length, 2);
       assert.ok(ws.projects.some((p) => p.name === 'ArasHRMS.Host'));
       assert.ok(ws.projects.some((p) => p.name === 'ArasHRMS.Core'));
@@ -390,5 +395,3 @@ console.log('Calculation:', add(10, 25));
     }
   });
 });
-
-

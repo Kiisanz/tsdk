@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ProjectReference, ProjectType, TsProjectManifest } from './types.js';
 import { TsProject } from './project.js';
+import { parseJsonc } from '../utils/jsonc.js';
 
 export function isNativeProject(dirOrFile: string): boolean {
   try {
@@ -21,7 +22,7 @@ export function isNativeProject(dirOrFile: string): boolean {
     }
 
     const rawTsConfig = fs.readFileSync(tsconfigPath, 'utf8');
-    const parsed = JSON.parse(rawTsConfig);
+    const parsed = parseJsonc(rawTsConfig);
     return parsed.compilerOptions?.composite === true || Array.isArray(parsed.include);
   } catch {
     return false;
@@ -35,12 +36,12 @@ export function loadNativeProjectSync(dirOrFile: string): TsProject {
   const packageJsonPath = path.join(dir, 'package.json');
 
   const rawPkg = fs.readFileSync(packageJsonPath, 'utf8');
-  const pkg = JSON.parse(rawPkg);
+  const pkg = parseJsonc(rawPkg);
 
   let tsconfig: Record<string, unknown> = {};
   if (fs.existsSync(tsconfigPath)) {
     const rawTs = fs.readFileSync(tsconfigPath, 'utf8');
-    tsconfig = JSON.parse(rawTs);
+    tsconfig = parseJsonc(rawTs);
   }
 
   const projectName: string = pkg.tsnx?.name ?? pkg.name ?? path.basename(dir);
@@ -58,7 +59,7 @@ export function loadNativeProjectSync(dirOrFile: string): TsProject {
     const targetPkgPath = path.join(targetDir, 'package.json');
     if (fs.existsSync(targetPkgPath)) {
       try {
-        const targetPkg = JSON.parse(fs.readFileSync(targetPkgPath, 'utf8'));
+        const targetPkg = parseJsonc(fs.readFileSync(targetPkgPath, 'utf8'));
         targetProjectName = targetPkg.tsnx?.name ?? targetPkg.name ?? targetProjectName;
       } catch {
         // Fallback to directory name

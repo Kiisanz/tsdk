@@ -1,16 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ProjectGraph, toKebabCase } from '@tsnx/core';
-import { PackageSyncManager } from '@tsnx/build';
+import { ProjectGraph, parseJsonc, toKebabCase } from '@tsnx/core';
+import { BuildService, PackageSyncManager } from '@tsnx/build';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TsdkContext } from '../discovery.js';
+import { PackageManagerDetector, installDependencies } from '../scaffolding/package-manager.js';
 
-export function runRef(
+export async function runRef(
   subCommand: string | undefined,
   args: string[],
   context: TsdkContext | null,
-): number {
-  if (!subCommand || subCommand === 'help') {
+): Promise<number> {
+  if (!subCommand || subCommand === 'help' || subCommand === '--help' || subCommand === '-h' || args.includes('--help') || args.includes('-h')) {
     console.log(`
 Usage:
   tsnx ref <subcommand> <targetProject>
@@ -83,11 +84,33 @@ Examples:
           relPath = `./${relPath}`;
         }
 
+        // 0. Validate target project has composite & declaration enabled for references
+        const targetTsconfigPath = path.join(targetProj.directory, 'tsconfig.json');
+        if (fs.existsSync(targetTsconfigPath)) {
+          try {
+            const raw = fs.readFileSync(targetTsconfigPath, 'utf-8');
+            const parsed = parseJsonc(raw);
+            if (!parsed.compilerOptions) parsed.compilerOptions = {};
+            let tsconfigModified = false;
+            if (!parsed.compilerOptions.composite) {
+              parsed.compilerOptions.composite = true;
+              tsconfigModified = true;
+            }
+            if (!parsed.compilerOptions.declaration) {
+              parsed.compilerOptions.declaration = true;
+              tsconfigModified = true;
+            }
+            if (tsconfigModified) {
+              fs.writeFileSync(targetTsconfigPath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8');
+            }
+          } catch {}
+        }
+
         const tsconfigPath = path.join(projDir, 'tsconfig.json');
         if (fs.existsSync(tsconfigPath)) {
           try {
             const raw = fs.readFileSync(tsconfigPath, 'utf-8');
-            const parsed = JSON.parse(raw);
+            const parsed = parseJsonc(raw);
             if (!Array.isArray(parsed.references)) {
               parsed.references = [];
             }
@@ -104,12 +127,27 @@ Examples:
         }
 
         // 2. Dual-wiring: Update package.json dependencies
-        const targetPkgName = targetProj.manifest.spec.package?.name ?? targetProj.name.toLowerCase();
+        let targetPkgName = targetProj.manifest.spec.package?.name;
+        if (!targetPkgName) {
+          const targetPkgPath = path.join(targetProj.directory, 'package.json');
+          if (fs.existsSync(targetPkgPath)) {
+            try {
+              const p = parseJsonc(fs.readFileSync(targetPkgPath, 'utf-8'));
+              if (typeof p.name === 'string') {
+                targetPkgName = p.name;
+              }
+            } catch {}
+          }
+        }
+        if (!targetPkgName) {
+          targetPkgName = toKebabCase(targetProj.name);
+        }
+
         const pkgJsonPath = path.join(projDir, 'package.json');
         if (fs.existsSync(pkgJsonPath)) {
           try {
             const raw = fs.readFileSync(pkgJsonPath, 'utf-8');
-            const parsed = JSON.parse(raw);
+            const parsed = parseJsonc(raw);
             if (!parsed.dependencies || typeof parsed.dependencies !== 'object') {
               parsed.dependencies = {};
             }
@@ -169,6 +207,23 @@ Examples:
 
         PackageSyncManager.syncWorkspacePackages(updatedWs, graph);
         console.log(`✔ Synchronized package.json dependencies for "${currentProject.name}"`);
+
+        const noInstall = args.includes('--no-install');
+        if (!noInstall) {
+          try {
+            const pmRes = PackageManagerDetector.resolve({
+              projectDir: ws.directory,
+              contextWorkspaceDir: ws.directory,
+            });
+            installDependencies(pmRes.pm, pmRes.installDir);
+            console.log(`✔ Linked workspace dependencies via ${pmRes.pm} install`);
+
+            await BuildService.buildWorkspace(updatedWs);
+            console.log(`✔ Built referenced project "${matchedTargetName}" (types ready)`);
+          } catch (err: unknown) {
+            console.warn(`ℹ Automatic relink/build skipped:`, err instanceof Error ? err.message : err);
+          }
+        }
       }
 
       return 0;
@@ -217,7 +272,21 @@ Examples:
     }
 
     // 2. Dual-wiring: Remove from package.json dependencies
-    const targetPkgName = targetProj?.manifest.spec.package?.name ?? toKebabCase(targetName);
+    let targetPkgName = targetProj?.manifest.spec.package?.name;
+    if (!targetPkgName && targetProj) {
+      const targetPkgPath = path.join(targetProj.directory, 'package.json');
+      if (fs.existsSync(targetPkgPath)) {
+        try {
+          const p = JSON.parse(fs.readFileSync(targetPkgPath, 'utf-8'));
+          if (typeof p.name === 'string') {
+            targetPkgName = p.name;
+          }
+        } catch {}
+      }
+    }
+    if (!targetPkgName) {
+      targetPkgName = toKebabCase(targetName);
+    }
     const pkgJsonPath = path.join(projDir, 'package.json');
     if (fs.existsSync(pkgJsonPath)) {
       try {

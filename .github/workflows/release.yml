@@ -77,7 +77,9 @@ jobs:
 
       - name: Publish to npm
         if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
-        run: pnpm -r --workspace-concurrency=1 publish --access public --tag ${{ steps.dist_tag.outputs.tag }} --no-git-checks
+        run: |
+          pnpm -r --workspace-concurrency=1 publish --access public --tag ${{ steps.dist_tag.outputs.tag }} --no-git-checks
+          pnpm --filter @tsnx/cli publish --access public --tag ${{ steps.dist_tag.outputs.tag }} --no-git-checks || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -86,7 +88,7 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          for pkg in @tsnx/core @tsnx/hosting @tsnx/build @tsnx/web @tsnx/cli; do
+          for pkg in @tsnx/core @tsnx/hosting-abstractions @tsnx/hosting @tsnx/build @tsnx/web @tsnx/cli; do
             echo "Setting latest dist-tag for $pkg@$VERSION..."
             npm dist-tag add $pkg@$VERSION latest || true
           done

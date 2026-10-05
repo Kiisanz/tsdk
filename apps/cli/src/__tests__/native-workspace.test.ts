@@ -14,12 +14,12 @@ describe('Native TypeScript Workspace & Project References System', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-native-ws-'));
 
     try {
-      // 1. Default derived scope: tsnx init workspace -n ArasERP
+      // 1. Default derived scope: tsnx workspace init -n ArasERP
       const arasDir = path.join(tmpDir, 'ArasERP');
       fs.mkdirSync(arasDir, { recursive: true });
       const initOutput1 = execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'ArasERP'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'ArasERP'],
         { cwd: arasDir, encoding: 'utf-8' },
       );
       assert.ok(initOutput1.includes('Initialized workspace "ArasERP"'));
@@ -40,23 +40,23 @@ describe('Native TypeScript Workspace & Project References System', () => {
       assert.equal(ws1.name, 'ArasERP');
       assert.equal(ws1.scope, '@araserp');
 
-      // 2. Explicit scope: tsnx init workspace -n CustomApp --scope @mycorp
+      // 2. Explicit scope: tsnx workspace init -n CustomApp --scope @mycorp
       const customDir = path.join(tmpDir, 'CustomApp');
       fs.mkdirSync(customDir, { recursive: true });
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'CustomApp', '--scope', '@mycorp'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'CustomApp', '--scope', '@mycorp'],
         { cwd: customDir, encoding: 'utf-8' },
       );
       const customPkg = JSON.parse(fs.readFileSync(path.join(customDir, 'package.json'), 'utf-8'));
       assert.deepEqual(customPkg.tsnx, { name: 'CustomApp', scope: '@mycorp' });
 
-      // 3. No scope: tsnx init workspace -n PlainApp --no-scope
+      // 3. No scope: tsnx workspace init -n PlainApp --no-scope
       const plainDir = path.join(tmpDir, 'PlainApp');
       fs.mkdirSync(plainDir, { recursive: true });
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'PlainApp', '--no-scope'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'PlainApp', '--no-scope'],
         { cwd: plainDir, encoding: 'utf-8' },
       );
       const plainPkg = JSON.parse(fs.readFileSync(path.join(plainDir, 'package.json'), 'utf-8'));
@@ -73,7 +73,7 @@ describe('Native TypeScript Workspace & Project References System', () => {
       // 1. Initialize native workspace ArasERP
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'ArasERP'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'ArasERP'],
         { cwd: tmpDir, encoding: 'utf-8' },
       );
 
@@ -146,10 +146,12 @@ describe('Native TypeScript Workspace & Project References System', () => {
         'utf-8',
       );
 
-      // Link node_modules for runtime module resolution
+      // Link node_modules for runtime module resolution if not already linked by tsnx ref add
       const hostModulesDir = path.join(hostDir, 'node_modules', '@araserp');
-      fs.mkdirSync(hostModulesDir, { recursive: true });
-      fs.symlinkSync(domainDir, path.join(hostModulesDir, 'domain'), 'junction');
+      if (!fs.existsSync(path.join(hostModulesDir, 'domain'))) {
+        fs.mkdirSync(hostModulesDir, { recursive: true });
+        fs.symlinkSync(domainDir, path.join(hostModulesDir, 'domain'), 'junction');
+      }
 
       // 6. Build entire solution: tsnx build
       const buildOutput = execFileSync(
@@ -186,6 +188,19 @@ describe('Native TypeScript Workspace & Project References System', () => {
       // Verify workspace dependency in package.json is removed
       const derefPkg = JSON.parse(fs.readFileSync(path.join(hostDir, 'package.json'), 'utf-8'));
       assert.equal(derefPkg.dependencies?.['@araserp/domain'], undefined);
+
+      // 9. Clean project removal from workspace: tsnx workspace remove ArasERP.Domain --delete
+      const wsRemoveOutput = execFileSync(
+        process.execPath,
+        [CLI_BIN, 'workspace', 'remove', 'ArasERP.Domain', '--delete'],
+        { cwd: tmpDir, encoding: 'utf-8' },
+      );
+      assert.ok(wsRemoveOutput.includes('Unregistered project "ArasERP.Domain"'));
+      assert.ok(wsRemoveOutput.includes('Deleted project directory from disk'));
+      assert.equal(fs.existsSync(domainDir), false);
+
+      const updatedRootTsconfig = JSON.parse(fs.readFileSync(path.join(tmpDir, 'tsconfig.json'), 'utf-8'));
+      assert.deepEqual(updatedRootTsconfig.references, [{ path: './apps/Host' }]);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

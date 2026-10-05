@@ -5,23 +5,25 @@ export function runWorkspace(
   subCommand: string | undefined,
   args: string[],
   context: TsdkContext | null,
-  isNativeInit = false,
 ): number {
-  if (!subCommand || subCommand === 'help') {
+  if (!subCommand || subCommand === 'help' || subCommand === '--help' || subCommand === '-h' || args.includes('--help') || args.includes('-h')) {
     console.log(`
 Usage:
   tsnx workspace <subcommand> [options]
-  tsnx init workspace [options]
 
 Subcommands:
-  init [name]    Initialize a new native solution workspace with tsconfig.json & pnpm-workspace.yaml
-  add <path>     Register an existing project into the nearest workspace
+  init [name]                Initialize a new solution workspace with tsconfig.json & pnpm-workspace.yaml
+  add <path>                 Register an existing project into the nearest workspace
+  remove <name|path>         Unregister a project from workspace references and dependencies
+  rm <name|path>             Alias for remove
 
-Options:
+Options for "workspace remove":
+  --delete, -d               Delete the project directory from disk
+
+Options for "workspace init":
   -n, --name <name>    Workspace name
   --scope <scope>      Explicit npm package scope (e.g. @aras)
   --no-scope           Disable automatic package scope derivation
-  --legacy             Initialize with legacy .tswork manifest only
 `);
     return 0;
   }
@@ -30,7 +32,6 @@ Options:
     let explicitName: string | undefined;
     let explicitScope: string | undefined;
     let noScope = false;
-    let legacy = false;
     const positional: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -63,10 +64,6 @@ Options:
         noScope = true;
         continue;
       }
-      if (arg === '--legacy') {
-        legacy = true;
-        continue;
-      }
       if (!arg.startsWith('-')) {
         positional.push(arg);
       }
@@ -74,19 +71,15 @@ Options:
 
     const wsName = explicitName ?? positional[0];
     if (!wsName) {
-      console.error('[TSNX Error] Please specify a workspace name: tsnx init workspace -n <name>');
+      console.error('[TSNX Error] Please specify a workspace name: tsnx workspace init -n <name>');
       return 1;
     }
-
-    const isLegacy =
-      legacy || (!isNativeInit && !explicitName && !explicitScope && !noScope && !args.includes('--native'));
 
     try {
       const createdPath = WorkspaceManager.initWorkspace({
         name: wsName,
         scope: explicitScope,
         noScope,
-        legacy: isLegacy,
       });
       console.log(`\n✔ Initialized workspace "${wsName}" at ${createdPath}`);
       return 0;
@@ -115,6 +108,37 @@ Options:
       return 0;
     } catch (err: unknown) {
       console.error(`\n✖ Failed to add project to workspace:`, err instanceof Error ? err.message : err);
+      return 1;
+    }
+  }
+
+  if (subCommand === 'remove' || subCommand === 'rm') {
+    const targetProject = args.find((a) => !a.startsWith('-'));
+    const deleteFiles = args.includes('--delete') || args.includes('-d') || args.includes('--purge');
+
+    if (!targetProject) {
+      console.error('[TSNX Error] Please specify a project name or path: tsnx workspace remove <project> [--delete]');
+      return 1;
+    }
+
+    const ws = context?.kind === 'workspace' ? context.workspace : context?.parentWorkspace;
+    if (!ws) {
+      console.error('[TSNX Error] No workspace found in current or parent directories.');
+      return 1;
+    }
+
+    try {
+      const res = WorkspaceManager.removeProjectFromWorkspace(ws.filePath, targetProject, { deleteFiles });
+      console.log(`\n✔ Unregistered project "${res.removedProjectName}" from workspace "${ws.name}".`);
+      if (res.cleanedReferencesFrom.length > 0) {
+        console.log(`✔ Cleaned references from: ${res.cleanedReferencesFrom.join(', ')}`);
+      }
+      if (res.deletedFiles) {
+        console.log(`✔ Deleted project directory from disk.`);
+      }
+      return 0;
+    } catch (err: unknown) {
+      console.error(`\n✖ Failed to remove project from workspace:`, err instanceof Error ? err.message : err);
       return 1;
     }
   }

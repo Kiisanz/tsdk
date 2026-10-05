@@ -1,6 +1,6 @@
 {
   "name": "@tsnx/cli",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "description": "TSNX CLI - Developer interface for TypeScript projects and workspaces",
   "license": "MIT",
   "type": "module",
@@ -31,7 +31,7 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --test --test-concurrency=1 dist/__tests__/**/*.test.js"
+    "test": "node ../../scripts/test-runner.js"
   },
   "dependencies": {
     "@tsnx/build": "workspace:*",

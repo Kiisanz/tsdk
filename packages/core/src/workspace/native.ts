@@ -4,6 +4,7 @@ import { TsProject } from '../project/project.js';
 import { loadNativeProjectSync, isNativeProject } from '../project/native.js';
 import { TsWorkspace } from './workspace.js';
 import { TsWorkspaceManifest, WorkspaceProjectEntry } from './types.js';
+import { parseJsonc } from '../utils/jsonc.js';
 
 export function isNativeWorkspace(dirOrFile: string): boolean {
   try {
@@ -22,13 +23,22 @@ export function isNativeWorkspace(dirOrFile: string): boolean {
       return false;
     }
 
+    const rawPkg = fs.readFileSync(packageJsonPath, 'utf8');
+    const pkg = parseJsonc(rawPkg);
+
+    // If it has an explicit project type, it is a project, not a workspace
+    if (pkg.tsnx?.type) {
+      return false;
+    }
+
     const rawTsConfig = fs.readFileSync(tsconfigPath, 'utf8');
-    const parsed = JSON.parse(rawTsConfig);
+    const parsed = parseJsonc(rawTsConfig);
 
     // Solution tsconfig must have references array and usually no composite: true
     if (Array.isArray(parsed.references)) {
       const pnpmWs = path.join(dir, 'pnpm-workspace.yaml');
-      return fs.existsSync(pnpmWs) || !parsed.compilerOptions?.composite;
+      const hasWorkspacesField = Array.isArray(pkg.workspaces) || typeof pkg.workspaces === 'object';
+      return fs.existsSync(pnpmWs) || hasWorkspacesField || !parsed.compilerOptions?.composite;
     }
     return false;
   } catch {
@@ -43,10 +53,13 @@ export function loadNativeWorkspaceSync(dirOrFile: string): TsWorkspace {
   const packageJsonPath = path.join(dir, 'package.json');
 
   const rawPkg = fs.readFileSync(packageJsonPath, 'utf8');
-  const pkg = JSON.parse(rawPkg);
+  const pkg = parseJsonc(rawPkg);
 
-  const rawTs = fs.readFileSync(tsconfigPath, 'utf8');
-  const tsconfig = JSON.parse(rawTs);
+  let tsconfig: Record<string, any> = { files: [], references: [] };
+  if (fs.existsSync(tsconfigPath)) {
+    const rawTs = fs.readFileSync(tsconfigPath, 'utf8');
+    tsconfig = parseJsonc(rawTs);
+  }
 
   const workspaceName: string =
     pkg.tsnx?.name ?? pkg.name ?? path.basename(dir);

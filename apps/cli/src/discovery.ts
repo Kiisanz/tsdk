@@ -69,7 +69,9 @@ export function findContext(startDir = process.cwd(), forceWorkspace = false): T
           };
         }
         if (isNativeWorkspace(searchDir)) {
-          const configPath = path.join(searchDir, 'tsconfig.json');
+          const configPath = fs.existsSync(path.join(searchDir, 'tsconfig.json'))
+            ? path.join(searchDir, 'tsconfig.json')
+            : path.join(searchDir, 'package.json');
           return {
             kind: 'workspace',
             workspace: TsWorkspace.loadSync(searchDir),
@@ -130,7 +132,9 @@ export function findContext(startDir = process.cwd(), forceWorkspace = false): T
 
       // Check for native workspace at this level
       if (isNativeWorkspace(searchDir)) {
-        const configPath = path.join(searchDir, 'tsconfig.json');
+        const configPath = fs.existsSync(path.join(searchDir, 'tsconfig.json'))
+          ? path.join(searchDir, 'tsconfig.json')
+          : path.join(searchDir, 'package.json');
         return {
           kind: 'workspace',
           workspace: TsWorkspace.loadSync(searchDir),

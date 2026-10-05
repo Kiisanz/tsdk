@@ -1,5 +1,4 @@
 import * as path from 'node:path';
-import { isNativeWorkspace } from '@tsnx/core';
 import { TsdkContext } from '../discovery.js';
 import {
   PackageManagerDetector,
@@ -12,6 +11,32 @@ export function runCreate(
   args: string[],
   context: TsdkContext | null,
 ): number {
+  if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
+    console.log(`
+Usage:
+  tsnx create <template> [name] [options]
+
+Templates:
+  console    Executable console application
+  library    Reusable TypeScript library package
+  webapi     HTTP Web API application powered by @tsnx/web
+
+Options:
+  -n, --name <name>          Project name
+  -o, --output <dir>         Output directory for project (defaults to cwd)
+  --no-install               Skip automatic dependency installation
+  -p, --package-manager <pm> Explicitly specify package manager (pnpm, npm, yarn, bun)
+  -h, --help                 Show this help message
+
+Examples:
+  tsnx create console HelloWorld
+  tsnx create webapi -n ArasHRMS.Host -o apps/ArasHRMS.Host
+  tsnx create library MyLib --no-install
+  tsnx create webapi MyApi -p pnpm
+`);
+    return 0;
+  }
+
   const positionalArgs: string[] = [];
   let explicitPm: string | undefined;
   let explicitName: string | undefined;
@@ -112,7 +137,6 @@ Examples:
     console.log(`Creating TSNX ${templateTitles[template as TemplateType]} project...\n`);
 
     const ws = context?.kind === 'workspace' ? context.workspace : context?.parentWorkspace;
-    const isNative = ws ? isNativeWorkspace(ws.directory) : args.includes('--native');
 
     const projectDir = TemplateGenerator.createProject({
       name,
@@ -120,7 +144,6 @@ Examples:
       targetDir: explicitOutput,
       scope: ws?.scope,
       workspaceName: ws?.name,
-      native: isNative,
     });
 
     console.log(`✓ Project scaffolded`);
