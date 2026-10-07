@@ -4,4 +4,4 @@ export * from './package/index.js';
 export * from './validator/index.js';
 export * from './pipeline/index.js';
 
-export const BUILD_VERSION = '0.3.4';
+export const BUILD_VERSION = '0.4.1';

@@ -15,3 +15,6 @@ export * from './lifecycle/types.js';
 
 // Host
 export * from './host/types.js';
+
+// Options Pattern
+export * from './options/types.js';

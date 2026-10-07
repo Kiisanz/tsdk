@@ -1,11 +1,13 @@
 import { Readable } from 'node:stream';
 import { HttpContext } from './http-context.js';
+import { ProblemDetails, ProblemDetailsInput } from '../errors/types.js';
+import { formatProblemDetails } from '../errors/problem-details.js';
 
 export interface HttpResult {
   executeAsync(ctx: HttpContext): Promise<void>;
 }
 
-export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult>;
+export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult> | Promise<void> | void;
 
 export class JsonResult implements HttpResult {
   constructor(
@@ -51,22 +53,33 @@ export class StatusCodeResult implements HttpResult {
 }
 
 export class ProblemResult implements HttpResult {
+  public readonly problem: ProblemDetails;
+
+  constructor(input: ProblemDetailsInput);
+  constructor(title: string, statusCode?: number, detail?: string, extensions?: Record<string, any>);
   constructor(
-    public readonly title: string,
-    public readonly statusCode: number,
-    public readonly detail?: string,
-    public readonly extensions?: Record<string, any>
-  ) {}
+    inputOrTitle: ProblemDetailsInput | string,
+    statusCode = 500,
+    detail?: string,
+    extensions?: Record<string, any>
+  ) {
+    if (typeof inputOrTitle === 'string') {
+      this.problem = formatProblemDetails(
+        {
+          title: inputOrTitle,
+          status: statusCode,
+          detail,
+          extensions,
+        },
+        statusCode
+      );
+    } else {
+      this.problem = formatProblemDetails(inputOrTitle, inputOrTitle.status ?? 500);
+    }
+  }
 
   public async executeAsync(ctx: HttpContext): Promise<void> {
-    ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
-    const body: Record<string, any> = {
-      title: this.title,
-      status: this.statusCode,
-      ...(this.detail ? { detail: this.detail } : {}),
-      ...(this.extensions ?? {}),
-    };
-    await ctx.response.writeJson(body, this.statusCode);
+    await ctx.response.writeProblem(this.problem);
   }
 }
 
@@ -127,7 +140,27 @@ export class Results {
     return new StatusCodeResult(code);
   }
 
-  public static problem(title: string, statusCode: number, detail?: string, extensions?: Record<string, any>): HttpResult {
-    return new ProblemResult(title, statusCode, detail, extensions);
+  public static problem(input: ProblemDetailsInput): HttpResult;
+  public static problem(title: string, statusCode?: number, detail?: string, extensions?: Record<string, any>): HttpResult;
+  public static problem(
+    inputOrTitle: ProblemDetailsInput | string,
+    statusCode?: number,
+    detail?: string,
+    extensions?: Record<string, any>
+  ): HttpResult {
+    return new ProblemResult(inputOrTitle as any, statusCode, detail, extensions);
+  }
+
+  public static validationProblem(
+    errors: Record<string, string[]>,
+    title = 'One or more validation errors occurred.',
+    statusCode = 400
+  ): HttpResult {
+    return new ProblemResult({
+      type: 'https://tsnx.dev/problems/validation',
+      title,
+      status: statusCode,
+      errors,
+    });
   }
 }

@@ -26,9 +26,6 @@ export class JsonConfigurationProvider implements IConfigurationProvider {
       const parsed = JSON.parse(content);
       return typeof parsed === 'object' && parsed !== null ? parsed : {};
     } catch (err: unknown) {
-      if (this.optional) {
-        return {};
-      }
       throw new Error(`Failed to parse configuration file "${resolvedPath}": ${err instanceof Error ? err.message : err}`);
     }
   }

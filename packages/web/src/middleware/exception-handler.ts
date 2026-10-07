@@ -1,48 +1,32 @@
 import { HttpContext } from '../http/http-context.js';
 import { RequestDelegate } from './pipeline.js';
 import { ILogger } from '@tsnx/hosting';
+import {
+  ExceptionHandlerPipeline,
+  HandlerDescriptorOrType,
+} from '../errors/exception-handler-pipeline.js';
+import { ExceptionHandlerOptions } from '../errors/types.js';
 
-export interface ErrorHandlerOptions {
-  includeDetails?: boolean;
-}
+export { ExceptionHandlerOptions };
+export type ErrorHandlerOptions = ExceptionHandlerOptions;
 
-export function createExceptionHandlerMiddleware(logger?: ILogger, options: ErrorHandlerOptions = {}) {
+export function createExceptionHandlerMiddleware(
+  pipelineOrLogger?: ExceptionHandlerPipeline | ILogger,
+  options: ExceptionHandlerOptions = {},
+  handlers: readonly HandlerDescriptorOrType[] = []
+) {
+  let pipeline: ExceptionHandlerPipeline;
+  if (pipelineOrLogger instanceof ExceptionHandlerPipeline) {
+    pipeline = pipelineOrLogger;
+  } else {
+    pipeline = new ExceptionHandlerPipeline(handlers, pipelineOrLogger, options);
+  }
+
   return async (ctx: HttpContext, next: RequestDelegate): Promise<void> => {
     try {
       await next(ctx);
-    } catch (err: any) {
-      if (logger) {
-        logger.error(`Unhandled exception processing ${ctx.request.method} ${ctx.request.url}: ${err?.stack || err?.message || err}`);
-      }
-
-      // Check if response has already started (headers sent)
-      if (ctx.response.hasStarted) {
-        if (!ctx.response.raw.writableEnded) {
-          ctx.response.raw.destroy(err);
-        }
-        return;
-      }
-
-      const statusCode = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
-        ? err.statusCode
-        : 500;
-
-      const title = statusCode === 400
-        ? 'Bad Request'
-        : statusCode === 404
-        ? 'Not Found'
-        : statusCode === 413
-        ? 'Payload Too Large'
-        : 'Internal Server Error';
-
-      ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
-      const body: Record<string, any> = {
-        title,
-        status: statusCode,
-        detail: options.includeDetails || statusCode < 500 ? (err?.message || 'An error occurred') : 'An unexpected internal error occurred.',
-      };
-
-      await ctx.response.writeJson(body, statusCode);
+    } catch (err: unknown) {
+      await pipeline.handleAsync(ctx, err);
     }
   };
 }
