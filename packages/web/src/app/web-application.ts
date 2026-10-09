@@ -21,6 +21,10 @@ import {
   EXCEPTION_HANDLER_TOKEN,
   ExceptionHandlerPipeline,
 } from '../errors/index.js';
+import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
+import { EndpointFilterPipeline } from '../filters/filter-pipeline.js';
+import { DefaultEndpointFilterInvocationContext } from '../filters/invocation-context.js';
+import { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
 
 export class WebApplicationBuilder {
   private readonly builder: HostApplicationBuilder;
@@ -135,35 +139,115 @@ export class WebApplication {
     return this;
   }
 
-  public mapGet(pattern: string, handler: RouteHandler): this {
-    this.router.get(pattern, handler);
-    return this;
+  public mapGet(pattern: string, handler: RouteHandler): RouteHandlerBuilder;
+  public mapGet<const T extends readonly EndpointArgumentDescriptor[]>(
+    pattern: string,
+    descriptors: T,
+    handler: (...args: InferDescriptors<T>) => any,
+  ): RouteHandlerBuilder;
+  public mapGet(
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    return this.mapEndpoint('GET', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  public mapPost(pattern: string, handler: RouteHandler): this {
-    this.router.post(pattern, handler);
-    return this;
+  public mapPost(pattern: string, handler: RouteHandler): RouteHandlerBuilder;
+  public mapPost<const T extends readonly EndpointArgumentDescriptor[]>(
+    pattern: string,
+    descriptors: T,
+    handler: (...args: InferDescriptors<T>) => any,
+  ): RouteHandlerBuilder;
+  public mapPost(
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    return this.mapEndpoint('POST', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  public mapPut(pattern: string, handler: RouteHandler): this {
-    this.router.put(pattern, handler);
-    return this;
+  public mapPut(pattern: string, handler: RouteHandler): RouteHandlerBuilder;
+  public mapPut<const T extends readonly EndpointArgumentDescriptor[]>(
+    pattern: string,
+    descriptors: T,
+    handler: (...args: InferDescriptors<T>) => any,
+  ): RouteHandlerBuilder;
+  public mapPut(
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    return this.mapEndpoint('PUT', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  public mapDelete(pattern: string, handler: RouteHandler): this {
-    this.router.delete(pattern, handler);
-    return this;
+  public mapDelete(pattern: string, handler: RouteHandler): RouteHandlerBuilder;
+  public mapDelete<const T extends readonly EndpointArgumentDescriptor[]>(
+    pattern: string,
+    descriptors: T,
+    handler: (...args: InferDescriptors<T>) => any,
+  ): RouteHandlerBuilder;
+  public mapDelete(
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    return this.mapEndpoint('DELETE', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  public mapPatch(pattern: string, handler: RouteHandler): this {
-    this.router.patch(pattern, handler);
-    return this;
+  public mapPatch(pattern: string, handler: RouteHandler): RouteHandlerBuilder;
+  public mapPatch<const T extends readonly EndpointArgumentDescriptor[]>(
+    pattern: string,
+    descriptors: T,
+    handler: (...args: InferDescriptors<T>) => any,
+  ): RouteHandlerBuilder;
+  public mapPatch(
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    return this.mapEndpoint('PATCH', pattern, handlerOrDescriptors, maybeHandler);
+  }
+
+  private mapEndpoint(
+    method: string,
+    pattern: string,
+    handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder {
+    const builder = new RouteHandlerBuilder(method, pattern);
+    if (Array.isArray(handlerOrDescriptors)) {
+      if (!maybeHandler) {
+        throw new Error(`Handler function is required when descriptors are provided for route [${method}] ${pattern}`);
+      }
+
+      // Validate at registration time: a route cannot have multiple body() descriptors
+      // because HTTP request stream can only be consumed once.
+      const bodyCount = handlerOrDescriptors.filter(d => d.source === 'body').length;
+      if (bodyCount > 1) {
+        throw new Error(
+          `Invalid route definition for [${method}] ${pattern}: found ${bodyCount} body() descriptors. An endpoint can bind the request body at most once.`
+        );
+      }
+
+      this.router.map(method, pattern, maybeHandler, handlerOrDescriptors, builder);
+    } else {
+      this.router.map(method, pattern, handlerOrDescriptors as (...args: any[]) => any, undefined, builder);
+    }
+    return builder;
   }
 
   private initHost(): void {
     if (this.appHost) return;
 
     // Terminal endpoint routing delegate
+    // Execution Flow:
+    // 1. HTTP Middleware (Authentication, logging, request preprocessing, exception handling)
+    // 2. Routing (Endpoint selection & URL parameter extraction)
+    // 3. Declarative Binding (Strictly sequential resolution of body, service, route, query, header, context)
+    // 4. Endpoint Filters (Inspect, transform in-place, or short-circuit arguments)
+    // 5. Endpoint Handler (Execute terminal logic with final context.arguments)
+    // 6. Response Execution (Execute HttpResult to response stream)
     const routingDelegate: RequestDelegate = async (ctx: HttpContext) => {
       const routingResult = this.router.match(ctx.request.method, ctx.request.path);
 
@@ -199,10 +283,35 @@ export class WebApplication {
       // Route matched
       ctx.params = routingResult.match.params;
       ctx.request.params = ctx.params;
-      const result = await routingResult.match.handler(ctx);
-      if (result && typeof result.executeAsync === 'function') {
+
+      // Strictly sequential descriptor resolution to guarantee deterministic stream reading and error ordering
+      const descriptors = routingResult.match.descriptors;
+      let args: unknown[];
+      if (descriptors !== undefined) {
+        args = [];
+        for (const desc of descriptors) {
+          args.push(await desc.resolveAsync(ctx));
+        }
+      } else {
+        args = [ctx];
+      }
+
+      const invocationContext = new DefaultEndpointFilterInvocationContext(ctx, args);
+      const filters = routingResult.match.builder?.getFilters() ?? [];
+
+      let result: unknown;
+      if (filters.length > 0) {
+        const filterPipeline = new EndpointFilterPipeline(filters);
+        result = await filterPipeline.executeAsync(invocationContext, async (filterCtx) => {
+          return await routingResult.match.handler(...filterCtx.arguments);
+        });
+      } else {
+        result = await routingResult.match.handler(...invocationContext.arguments);
+      }
+
+      if (result && typeof (result as any).executeAsync === 'function') {
         if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
-          await result.executeAsync(ctx);
+          await (result as any).executeAsync(ctx);
         }
       }
     };
