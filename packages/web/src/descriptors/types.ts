@@ -4,6 +4,9 @@ export type ArgumentSource = 'body' | 'service' | 'query' | 'route' | 'header' |
 
 export interface EndpointArgumentDescriptor<T = any> {
   readonly source: ArgumentSource;
+  readonly schema?: any;
+  readonly name?: string;
+  readonly token?: any;
   resolveAsync(ctx: HttpContext): Promise<T> | T;
 }
 
