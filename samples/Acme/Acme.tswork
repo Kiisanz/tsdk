@@ -1,0 +1,17 @@
+schemaVersion: 1
+kind: Workspace
+
+metadata:
+  name: Acme
+
+projects:
+  - path: apps/Acme.Api/Acme.Api.tsproj
+  - path: packages/Acme.Domain/Acme.Domain.tsproj
+
+defaults:
+  runtime: node
+
+  compiler:
+    target: ES2022
+    module: NodeNext
+    strict: true

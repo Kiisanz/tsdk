@@ -1,0 +1,133 @@
+import { Readable } from 'node:stream';
+import { HttpContext } from './http-context.js';
+
+export interface HttpResult {
+  executeAsync(ctx: HttpContext): Promise<void>;
+}
+
+export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult>;
+
+export class JsonResult implements HttpResult {
+  constructor(
+    public readonly data: any,
+    public readonly statusCode: number = 200
+  ) {}
+
+  public async executeAsync(ctx: HttpContext): Promise<void> {
+    await ctx.response.writeJson(this.data, this.statusCode);
+  }
+}
+
+export class TextResult implements HttpResult {
+  constructor(
+    public readonly text: string,
+    public readonly statusCode: number = 200,
+    public readonly contentType: string = 'text/plain; charset=utf-8'
+  ) {}
+
+  public async executeAsync(ctx: HttpContext): Promise<void> {
+    await ctx.response.writeText(this.text, this.statusCode, this.contentType);
+  }
+}
+
+export class StreamResult implements HttpResult {
+  constructor(
+    public readonly stream: Readable,
+    public readonly statusCode: number = 200,
+    public readonly contentType: string = 'application/octet-stream'
+  ) {}
+
+  public async executeAsync(ctx: HttpContext): Promise<void> {
+    await ctx.response.writeStream(this.stream, this.statusCode, this.contentType);
+  }
+}
+
+export class StatusCodeResult implements HttpResult {
+  constructor(public readonly statusCode: number) {}
+
+  public async executeAsync(ctx: HttpContext): Promise<void> {
+    await ctx.response.end(this.statusCode);
+  }
+}
+
+export class ProblemResult implements HttpResult {
+  constructor(
+    public readonly title: string,
+    public readonly statusCode: number,
+    public readonly detail?: string,
+    public readonly extensions?: Record<string, any>
+  ) {}
+
+  public async executeAsync(ctx: HttpContext): Promise<void> {
+    ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+    const body: Record<string, any> = {
+      title: this.title,
+      status: this.statusCode,
+      ...(this.detail ? { detail: this.detail } : {}),
+      ...(this.extensions ?? {}),
+    };
+    await ctx.response.writeJson(body, this.statusCode);
+  }
+}
+
+export class Results {
+  public static json(data: any, statusCode = 200): HttpResult {
+    return new JsonResult(data, statusCode);
+  }
+
+  public static ok(data?: any): HttpResult {
+    return data !== undefined ? new JsonResult(data, 200) : new StatusCodeResult(200);
+  }
+
+  public static created(data?: any, location?: string): HttpResult {
+    if (location) {
+      return {
+        async executeAsync(ctx: HttpContext): Promise<void> {
+          ctx.response.setHeader('Location', location);
+          if (data !== undefined) {
+            await ctx.response.writeJson(data, 201);
+          } else {
+            await ctx.response.end(201);
+          }
+        }
+      };
+    }
+    return new JsonResult(data, 201);
+  }
+
+  public static text(text: string, statusCode = 200, contentType?: string): HttpResult {
+    return new TextResult(text, statusCode, contentType);
+  }
+
+  public static stream(stream: Readable, statusCode = 200, contentType?: string): HttpResult {
+    return new StreamResult(stream, statusCode, contentType);
+  }
+
+  public static noContent(): HttpResult {
+    return new StatusCodeResult(204);
+  }
+
+  public static notModified(): HttpResult {
+    return new StatusCodeResult(304);
+  }
+
+  public static notFound(detail?: string): HttpResult {
+    return detail
+      ? new ProblemResult('Not Found', 404, detail)
+      : new StatusCodeResult(404);
+  }
+
+  public static badRequest(detail?: string): HttpResult {
+    return detail
+      ? new ProblemResult('Bad Request', 400, detail)
+      : new StatusCodeResult(400);
+  }
+
+  public static status(code: number): HttpResult {
+    return new StatusCodeResult(code);
+  }
+
+  public static problem(title: string, statusCode: number, detail?: string, extensions?: Record<string, any>): HttpResult {
+    return new ProblemResult(title, statusCode, detail, extensions);
+  }
+}

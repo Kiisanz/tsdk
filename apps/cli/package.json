@@ -1,0 +1,41 @@
+{
+  "name": "@tsdk/cli",
+  "version": "0.1.0-rc.1",
+  "description": "TSDK CLI - Developer interface for TSDK projects and workspaces",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "tsdk": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.tsbuildinfo",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --test dist/__tests__/**/*.test.js"
+  },
+  "dependencies": {
+    "@tsdk/build": "workspace:*",
+    "@tsdk/core": "workspace:*",
+    "yaml": "^2.9.1"
+  }
+}
