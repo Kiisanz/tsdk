@@ -112,6 +112,10 @@ export class Results {
     return new TextResult(text, statusCode, contentType);
   }
 
+  public static html(html: string, statusCode = 200): HttpResult {
+    return new TextResult(html, statusCode, 'text/html; charset=utf-8');
+  }
+
   public static stream(stream: Readable, statusCode = 200, contentType?: string): HttpResult {
     return new StreamResult(stream, statusCode, contentType);
   }
