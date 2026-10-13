@@ -45,6 +45,23 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       const isAssignable: Check = false;
       assert.equal(isAssignable, false);
     });
+
+    it('F-011: rejects raw Symbol() at compile-time and requires branded ServiceToken<T>', () => {
+      interface User { readonly userId: string; }
+      const USER_TOKEN = createToken<User>('User');
+
+      type IsAssignable<T, U> = [T] extends [U] ? true : false;
+
+      // Raw symbol must NOT be assignable to ServiceToken<User>
+      type RawSymbolAssignable = IsAssignable<symbol, typeof USER_TOKEN>;
+      const rawSymbolAssignable: RawSymbolAssignable = false;
+      assert.equal(rawSymbolAssignable, false);
+
+      // ServiceToken<User> must still be a symbol
+      type TokenIsSymbol = IsAssignable<typeof USER_TOKEN, symbol>;
+      const tokenIsSymbol: TokenIsSymbol = true;
+      assert.equal(tokenIsSymbol, true);
+    });
   });
 
   // =========================================================================
@@ -98,6 +115,55 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       assert.equal(svc.run(), 'task-123');
       assert.equal(root.get(CONFIG).port, 8080);
       assert.equal(root.get(VERSION), '1.0.0');
+    });
+
+    it('F-010: supports class constructor tokens in fluent .toClass() with class and token dependencies', () => {
+      interface ILogger { log(msg: string): void; }
+      const LOGGER = createToken<ILogger>('Logger');
+
+      class ConsoleLogger implements ILogger {
+        log(msg: string) { void msg; }
+      }
+      class TaskRepo {
+        get(id: string) { return `repo-${id}`; }
+      }
+      class TaskService {
+        constructor(public repo: TaskRepo, public logger: ILogger) {}
+        run() { return this.repo.get('456'); }
+      }
+      class StandaloneWorker {
+        readonly ready = true;
+      }
+
+      const services = new ServiceCollection();
+
+      // Register Logger with ServiceToken
+      services.addSingleton(LOGGER).toClass(ConsoleLogger);
+
+      // F-010: Register TaskRepo using class constructor token and zero-arg .toClass()
+      services.addScoped(TaskRepo).toClass();
+
+      // F-010: Register TaskService using class constructor token, taking class (TaskRepo) and token (LOGGER) dependencies
+      const builder = services.addScoped(TaskService);
+      // Verify builder has .toClass available
+      const ret = builder.toClass(TaskService, TaskRepo, LOGGER);
+      assert.equal(ret, services);
+
+      // F-010: Standalone class registration without .toClass() remains valid
+      services.addSingleton(StandaloneWorker);
+
+      const root = services.buildServiceProvider();
+      const scope = root.createScope();
+
+      // Verify class-based token resolution works with exact type inference
+      const svc = scope.get(TaskService);
+      assert.ok(svc instanceof TaskService);
+      assert.ok(svc.repo instanceof TaskRepo);
+      assert.equal(svc.run(), 'repo-456');
+
+      const worker = root.get(StandaloneWorker);
+      assert.ok(worker instanceof StandaloneWorker);
+      assert.equal(worker.ready, true);
     });
   });
 
@@ -216,6 +282,42 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
         assert.equal(classWorkerRan, true);
         assert.equal(factoryWorkerRan, true);
         assert.equal(app.services.get(COUNTER).count, 2);
+      } finally {
+        await app.stop();
+      }
+    });
+
+    it('F-010: supports class constructor dependencies in addHostedService().toClass()', async () => {
+      class WorkerState {
+        executed = false;
+      }
+
+      class StateWorker extends BackgroundService {
+        constructor(public state: WorkerState) {
+          super();
+        }
+        async execute(stoppingToken: AbortSignal): Promise<void> {
+          this.state.executed = true;
+          while (!stoppingToken.aborted) {
+            await new Promise((r) => setTimeout(r, 10));
+          }
+        }
+      }
+
+      const builder = AppHost.createBuilder();
+      builder.options.registerSignalHandlers = false;
+
+      // Register WorkerState with class token
+      builder.services.addSingleton(WorkerState);
+
+      // Register hosted service using class token dependency
+      builder.services.addHostedService().toClass(StateWorker, WorkerState);
+
+      const app = builder.build();
+      try {
+        await app.start();
+        await new Promise((r) => setTimeout(r, 25));
+        assert.equal(app.services.get(WorkerState).executed, true);
       } finally {
         await app.stop();
       }
