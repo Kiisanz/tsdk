@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: true
+      tag:
+        description: 'npm dist-tag (e.g. latest, rc, alpha, next)'
+        required: false
+        type: string
+        default: ''
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
@@ -48,14 +53,42 @@ jobs:
       - name: Run packaging & isolated consumer test
         run: node --test apps/cli/dist/__tests__/packaging.test.js
 
+      - name: Resolve npm dist-tag
+        id: dist_tag
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "$REF" == *"-alpha"* ]]; then
+            echo "tag=alpha" >> $GITHUB_OUTPUT
+          elif [[ "$REF" == *"-rc"* ]]; then
+            echo "tag=rc" >> $GITHUB_OUTPUT
+          elif [[ "$REF" == *"-"* ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish (Dry Run)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: pnpm -r --workspace-concurrency=1 publish --access public --tag rc --no-git-checks --dry-run
+        run: pnpm -r --workspace-concurrency=1 publish --access public --tag ${{ steps.dist_tag.outputs.tag }} --no-git-checks --dry-run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
         if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
-        run: pnpm -r --workspace-concurrency=1 publish --access public --tag rc --no-git-checks
+        run: pnpm -r --workspace-concurrency=1 publish --access public --tag ${{ steps.dist_tag.outputs.tag }} --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Ensure latest dist-tag for stable releases
+        if: ${{ steps.dist_tag.outputs.tag == 'latest' }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          for pkg in @tsnx/core @tsnx/hosting @tsnx/build @tsnx/web @tsnx/cli; do
+            echo "Setting latest dist-tag for $pkg@$VERSION..."
+            npm dist-tag add $pkg@$VERSION latest || true
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
