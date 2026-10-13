@@ -21,7 +21,7 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
     builder.options.registerSignalHandlers = false;
 
     builder.services.addSingleton('Greeting', 'Hello TSDK');
-    builder.addHostedService(TestWorker);
+    builder.addHostedService(() => new TestWorker());
 
     const app = builder.build();
 
@@ -54,7 +54,7 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
       }
     }
 
-    builder.addHostedService(AutoStopService);
+    builder.addHostedService(() => new AutoStopService());
     const app = builder.build();
 
     // Schedule stop after 40ms
@@ -80,7 +80,7 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
       }
     }
 
-    builder.addHostedService(FailingWorker);
+    builder.addHostedService(() => new FailingWorker());
     const app = builder.build();
 
     // app.run() must reject with the error thrown inside BackgroundService.execute()
@@ -118,7 +118,7 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
       }
     }
 
-    builder.addHostedService(SlowStartWorker);
+    builder.addHostedService(() => new SlowStartWorker());
     const app = builder.build();
 
     // Trigger start and stop concurrently

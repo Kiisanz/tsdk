@@ -92,27 +92,11 @@ export class ServiceCollection implements IServiceCollection {
     });
   }
 
-  addHostedService<T extends HostedService>(factory: (provider: IServiceProvider) => T): this;
-  addHostedService<T extends HostedService>(implementationType: new (...args: any[]) => T): this;
-  addHostedService<T extends HostedService>(
-    implementationOrFactory: (new (...args: any[]) => T) | ((sp: IServiceProvider) => T),
-  ): this {
-    if (
-      typeof implementationOrFactory === 'function' &&
-      implementationOrFactory.prototype &&
-      Object.getOwnPropertyNames(implementationOrFactory.prototype).length > 1
-    ) {
-      return this.add({
-        token: HOSTED_SERVICE_TOKEN,
-        lifetime: 'singleton',
-        implementationType: implementationOrFactory as new (...args: any[]) => T,
-      });
-    }
-
+  addHostedService<T extends HostedService>(factory: (sp: IServiceProvider) => T): this {
     return this.add({
       token: HOSTED_SERVICE_TOKEN,
       lifetime: 'singleton',
-      factory: implementationOrFactory as (sp: IServiceProvider) => T,
+      factory,
     });
   }
 

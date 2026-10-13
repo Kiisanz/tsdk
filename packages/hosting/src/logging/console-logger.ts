@@ -1,4 +1,4 @@
-import { ILogger, ILoggerFactory, LogLevel } from './types.js';
+import { ILogger, ILoggerFactory, LogEventMetadata, LogLevel } from './types.js';
 
 function formatLevel(level: LogLevel): string {
   switch (level) {
@@ -32,32 +32,31 @@ export class ConsoleLogger implements ILogger {
   log(level: LogLevel, message: string, ...args: any[]): void {
     if (!this.isEnabled(level)) return;
 
-    let eventId = 0;
-    let logArgs = args;
+    const timestamp = new Date().toISOString().slice(11, 19);
+    const prefix = `[${timestamp}] ${formatLevel(level)}: ${this.categoryName}`;
 
-    if (args.length > 0) {
-      if (typeof args[0] === 'number') {
-        eventId = args[0];
-        logArgs = args.slice(1);
-      } else if (typeof args[0]?.eventId === 'number') {
-        eventId = args[0].eventId;
-        logArgs = args.slice(1);
-      } else if (typeof args[0]?.id === 'number') {
-        eventId = args[0].id;
-        logArgs = args.slice(1);
-      }
+    if (level >= LogLevel.Error) {
+      console.error(`${prefix}\n      ${message}`, ...args);
+    } else if (level === LogLevel.Warning) {
+      console.warn(`${prefix}\n      ${message}`, ...args);
+    } else {
+      console.log(`${prefix}\n      ${message}`, ...args);
     }
+  }
+
+  logEvent(level: LogLevel, metadata: LogEventMetadata, message: string, ...args: any[]): void {
+    if (!this.isEnabled(level)) return;
 
     const timestamp = new Date().toISOString().slice(11, 19);
-    const eventSuffix = eventId !== 0 ? `[${eventId}]` : '';
+    const eventSuffix = metadata?.eventId && metadata.eventId !== 0 ? `[${metadata.eventId}]` : '';
     const prefix = `[${timestamp}] ${formatLevel(level)}: ${this.categoryName}${eventSuffix}`;
 
     if (level >= LogLevel.Error) {
-      console.error(`${prefix}\n      ${message}`, ...logArgs);
+      console.error(`${prefix}\n      ${message}`, ...args);
     } else if (level === LogLevel.Warning) {
-      console.warn(`${prefix}\n      ${message}`, ...logArgs);
+      console.warn(`${prefix}\n      ${message}`, ...args);
     } else {
-      console.log(`${prefix}\n      ${message}`, ...logArgs);
+      console.log(`${prefix}\n      ${message}`, ...args);
     }
   }
 

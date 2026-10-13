@@ -62,8 +62,7 @@ export interface IServiceCollection extends Iterable<ServiceDescriptor> {
   addTransient<T>(implementationType: new (...args: any[]) => T): this;
 
   // Hosted Service
-  addHostedService<T extends HostedService>(factory: (provider: IServiceProvider) => T): this;
-  addHostedService<T extends HostedService>(implementationType: new (...args: any[]) => T): this;
+  addHostedService<T extends HostedService>(factory: (sp: IServiceProvider) => T): this;
 
   // TryAdd variants
   tryAdd<T>(descriptor: ServiceDescriptor<T>): boolean;

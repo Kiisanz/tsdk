@@ -4,7 +4,7 @@ import { EnvironmentVariablesConfigurationProvider } from '../config/providers/e
 import { JsonConfigurationProvider } from '../config/providers/json-provider.js';
 import { MemoryConfigurationProvider } from '../config/providers/memory-provider.js';
 import { ServiceCollection } from '../di/service-collection.js';
-import { ServiceFactory } from '../di/types.js';
+import { IServiceProvider } from '../di/types.js';
 import { HostedService, HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 import { HostApplicationLifetime, HostLifecycleCoordinator } from '../lifecycle/host-lifetime.js';
 import { LoggerFactory } from '../logging/console-logger.js';
@@ -16,7 +16,6 @@ export class HostApplicationBuilder {
   public readonly services = new ServiceCollection();
   public readonly config = new Configuration();
   public readonly logging = new LoggerFactory(LogLevel.Information);
-  private readonly hostedServiceFactories: Array<(services: any) => HostedService> = [];
   public readonly options: HostOptions = {};
 
   constructor(args: string[] = []) {
@@ -35,23 +34,8 @@ export class HostApplicationBuilder {
     this.services.addSingleton(LoggerFactory, () => this.logging);
   }
 
-  addHostedService<T extends HostedService>(
-    serviceOrCtor: T | (new (...args: any[]) => T) | ServiceFactory<T>,
-  ): this {
-    if (typeof serviceOrCtor === 'function') {
-      if (serviceOrCtor.length === 1) {
-        // Factory function
-        const factory = serviceOrCtor as ServiceFactory<T>;
-        this.hostedServiceFactories.push((sp) => factory(sp));
-      } else {
-        // Class constructor
-        const ctor = serviceOrCtor as new (...args: any[]) => T;
-        this.hostedServiceFactories.push((sp) => new ctor(sp));
-      }
-    } else {
-      // Instance
-      this.hostedServiceFactories.push(() => serviceOrCtor);
-    }
+  addHostedService<T extends HostedService>(factory: (sp: IServiceProvider) => T): this {
+    this.services.addHostedService(factory);
     return this;
   }
 
@@ -61,21 +45,14 @@ export class HostApplicationBuilder {
 
     const serviceProvider = this.services.buildServiceProvider();
 
-    // Resolve hosted services
+    // Resolve hosted services from DI container
     const hostedServices: HostedService[] = [];
-    for (const factory of this.hostedServiceFactories) {
-      hostedServices.push(factory(serviceProvider));
-    }
-
-    // Also collect any hosted services registered with HOSTED_SERVICE_TOKEN in the service collection
     const registeredHostedDescriptors = this.services.findAll(HOSTED_SERVICE_TOKEN);
     for (const desc of registeredHostedDescriptors) {
       if (desc.instance) {
         hostedServices.push(desc.instance);
       } else if (desc.factory) {
         hostedServices.push(desc.factory(serviceProvider));
-      } else if (desc.implementationType) {
-        hostedServices.push(new desc.implementationType());
       }
     }
 

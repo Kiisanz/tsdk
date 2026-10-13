@@ -222,7 +222,7 @@ describe('@tsnx/hosting: Dependency Injection', () => {
     assert.equal(cache.name, 'in-memory');
   });
 
-  it('F-002: supports addHostedService for constructors and factories', () => {
+  it('F-008: supports addHostedService factory-based registration', () => {
     const services = new ServiceCollection();
 
     class MyWorker {
@@ -236,7 +236,7 @@ describe('@tsnx/hosting: Dependency Injection', () => {
       }
     }
 
-    services.addHostedService(MyWorker);
+    services.addHostedService(() => new MyWorker());
     services.addHostedService((sp) => {
       assert.ok(typeof sp.get === 'function');
       return new MyWorker();
@@ -244,7 +244,7 @@ describe('@tsnx/hosting: Dependency Injection', () => {
 
     const descriptors = services.findAll(HOSTED_SERVICE_TOKEN);
     assert.equal(descriptors.length, 2);
-    assert.equal(descriptors[0].implementationType, MyWorker);
+    assert.ok(typeof descriptors[0].factory === 'function');
     assert.ok(typeof descriptors[1].factory === 'function');
   });
 });

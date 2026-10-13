@@ -16,29 +16,37 @@ describe('@tsnx/hosting: Logging Abstraction', () => {
     assert.equal(logger.isEnabled(LogLevel.Debug), true);
   });
 
-  it('F-005: formats category cleanly without [0] when eventId is zero and formats [eventId] when non-zero', () => {
+  it('F-009: preserves numeric arguments in standard logging without sniffing as eventId', () => {
     const factory = new LoggerFactory(LogLevel.Information);
     const logger = factory.createLogger('HttpServer');
 
-    const logs: string[] = [];
+    const logs: { msg: string; args: any[] }[] = [];
     const originalLog = console.log;
-    console.log = (msg: string) => {
-      logs.push(msg);
+    console.log = (msg: string, ...args: any[]) => {
+      logs.push({ msg, args });
     };
 
     try {
-      // 1. Without event ID
-      logger.info('Listening on port 3000');
-      assert.ok(logs[0].includes('info: HttpServer\n'));
-      assert.ok(!logs[0].includes('HttpServer[0]'));
+      // 1. Numeric argument (port number) is preserved in payload, NOT treated as eventId
+      logger.info('Server listening on port', 3000);
+      assert.equal(logs.length, 1);
+      assert.ok(logs[0].msg.includes('info: HttpServer\n'));
+      assert.ok(!logs[0].msg.includes('HttpServer[3000]'));
+      assert.ok(!logs[0].msg.includes('HttpServer[0]'));
+      assert.deepEqual(logs[0].args, [3000]);
 
-      // 2. With non-zero event ID as number
-      logger.info('Request started', 1001);
-      assert.ok(logs[1].includes('info: HttpServer[1001]\n'));
+      // 2. Explicit logEvent with non-zero eventId outputs Category[eventId]
+      logger.logEvent(LogLevel.Information, { eventId: 1001 }, 'Server started', { port: 3000 });
+      assert.equal(logs.length, 2);
+      assert.ok(logs[1].msg.includes('info: HttpServer[1001]\n'));
+      assert.deepEqual(logs[1].args, [{ port: 3000 }]);
 
-      // 3. With non-zero event ID as object
-      logger.info('Connection accepted', { eventId: 2002, ip: '127.0.0.1' });
-      assert.ok(logs[2].includes('info: HttpServer[2002]\n'));
+      // 3. Explicit logEvent with eventId = 0 outputs clean Category without [0]
+      logger.logEvent(LogLevel.Information, { eventId: 0 }, 'Heartbeat check');
+      assert.equal(logs.length, 3);
+      assert.ok(logs[2].msg.includes('info: HttpServer\n'));
+      assert.ok(!logs[2].msg.includes('HttpServer[0]'));
+      assert.deepEqual(logs[2].args, []);
     } finally {
       console.log = originalLog;
     }
