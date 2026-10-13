@@ -6,7 +6,9 @@ import {
   ObjectDisposedError,
   ServiceCollection,
   ServiceNotFoundError,
+  ServiceToken,
 } from '../di/index.js';
+import { HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 
 describe('@tsnx/hosting: Dependency Injection', () => {
   it('resolves singleton, transient, and scoped lifetimes correctly', async () => {
@@ -198,5 +200,51 @@ describe('@tsnx/hosting: Dependency Injection', () => {
 
     // External pre-registered instance must NOT be disposed by the container
     assert.equal(externalDisposed, false);
+  });
+
+  it('F-001: preserves type inference with ServiceToken and addSingleton without manual sp annotation', () => {
+    const services = new ServiceCollection();
+
+    class CacheService {
+      constructor(public readonly name: string) {}
+    }
+    const CACHE = Symbol('Cache') as ServiceToken<CacheService>;
+
+    // sp is inferred as IServiceProvider without any manual type annotations
+    services.addSingleton(CACHE, (sp) => {
+      assert.ok(typeof sp.get === 'function');
+      return new CacheService('in-memory');
+    });
+
+    const sp = services.buildServiceProvider();
+    const cache = sp.get(CACHE);
+    assert.ok(cache instanceof CacheService);
+    assert.equal(cache.name, 'in-memory');
+  });
+
+  it('F-002: supports addHostedService for constructors and factories', () => {
+    const services = new ServiceCollection();
+
+    class MyWorker {
+      started = false;
+      stopped = false;
+      async start(_signal: AbortSignal) {
+        this.started = true;
+      }
+      async stop(_signal: AbortSignal) {
+        this.stopped = true;
+      }
+    }
+
+    services.addHostedService(MyWorker);
+    services.addHostedService((sp) => {
+      assert.ok(typeof sp.get === 'function');
+      return new MyWorker();
+    });
+
+    const descriptors = services.findAll(HOSTED_SERVICE_TOKEN);
+    assert.equal(descriptors.length, 2);
+    assert.equal(descriptors[0].implementationType, MyWorker);
+    assert.ok(typeof descriptors[1].factory === 'function');
   });
 });

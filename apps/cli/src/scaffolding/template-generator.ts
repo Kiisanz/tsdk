@@ -65,6 +65,9 @@ spec:
         version: '0.1.0',
         type: 'module',
         main: './dist/main.js',
+        devDependencies: {
+          '@types/node': '^22.13.9',
+        },
       };
       fs.writeFileSync(
         path.join(projectDir, 'package.json'),
@@ -116,6 +119,9 @@ spec:
             default: './dist/index.js',
           },
         },
+        devDependencies: {
+          '@types/node': '^22.13.9',
+        },
       };
       fs.writeFileSync(
         path.join(projectDir, 'package.json'),
@@ -160,7 +166,10 @@ spec:
         type: 'module',
         main: './dist/main.js',
         dependencies: {
-          '@tsnx/web': '0.1.0-rc.1',
+          '@tsnx/web': '0.1.0-rc.2',
+        },
+        devDependencies: {
+          '@types/node': '^22.13.9',
         },
       };
       fs.writeFileSync(

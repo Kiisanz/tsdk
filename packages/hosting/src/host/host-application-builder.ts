@@ -74,6 +74,8 @@ export class HostApplicationBuilder {
         hostedServices.push(desc.instance);
       } else if (desc.factory) {
         hostedServices.push(desc.factory(serviceProvider));
+      } else if (desc.implementationType) {
+        hostedServices.push(new desc.implementationType());
       }
     }
 

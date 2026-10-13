@@ -102,14 +102,36 @@ export class ImportValidator {
           // Check if resolved path escapes the project root directory
           if (!resolvedRealDir.startsWith(projectRealDir)) {
             // Cross-project relative import!
+            let targetProjName: string | undefined;
+            let targetPkgName: string | undefined;
+            if (workspace) {
+              for (const p of workspace.projects) {
+                const pRealDir = this.safeRealpath(p.directory);
+                if (resolvedRealDir.startsWith(pRealDir)) {
+                  targetProjName = p.name;
+                  targetPkgName = p.manifest.spec.package?.name;
+                  break;
+                }
+              }
+            }
+
+            const targetInfo = targetProjName ? `\nTarget project: ${targetProjName}` : '';
+            const fix = targetPkgName
+              ? `Import from the referenced package instead: import { ... } from '${targetPkgName}'`
+              : targetProjName
+                ? `Add project reference to '${targetProjName}' and import using its package name.`
+                : 'Import from the referenced package instead.';
+
             diagnostics.push({
               code: 'TSNX2102',
-              message: `TSNX2102: Cross-project relative import not allowed. Use package import instead.`,
+              message: `Cross-project relative import is forbidden.\n\nImport: ${specifier}${targetInfo}`,
               filePath,
               line: item.line,
               column: item.column,
               sourceProject: project.name,
               importSpecifier: specifier,
+              targetProject: targetProjName,
+              fixSuggestion: fix,
             });
           }
           continue;
@@ -133,14 +155,14 @@ export class ImportValidator {
           if (!isDirectRef) {
             diagnostics.push({
               code: 'TSNX2101',
-              message: `TSNX2101: Undeclared project reference\nProject: ${project.name}\nImport:  ${specifier}\nTarget:  ${targetWorkspaceProject.name}\nFix: tsnx ref add ${project.name} ${targetWorkspaceProject.name}`,
+              message: `Undeclared project reference\n\nProject: ${project.name}\nImport:  ${specifier}\nTarget:  ${targetWorkspaceProject.name}`,
               filePath,
               line: item.line,
               column: item.column,
               sourceProject: project.name,
               importSpecifier: specifier,
               targetProject: targetWorkspaceProject.name,
-              fixSuggestion: `tsnx ref add ${project.name} ${targetWorkspaceProject.name}`,
+              fixSuggestion: `tsnx ref add ${targetWorkspaceProject.name}`,
             });
           }
         } else if (!specifier.startsWith('node:')) {
@@ -150,12 +172,13 @@ export class ImportValidator {
             if (!this.isNodeBuiltin(packageName)) {
               diagnostics.push({
                 code: 'TSNX2103',
-                message: `TSNX2103: Transitive or undeclared npm dependency "${packageName}" is imported but not declared in ${project.name}'s package.json`,
+                message: `Transitive or undeclared npm dependency "${packageName}" is imported but not declared in ${project.name}'s package.json`,
                 filePath,
                 line: item.line,
                 column: item.column,
                 sourceProject: project.name,
                 importSpecifier: specifier,
+                fixSuggestion: `npm install ${packageName} in ${project.name}`,
               });
             }
           }

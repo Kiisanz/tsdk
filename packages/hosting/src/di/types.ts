@@ -1,6 +1,15 @@
+import type { HostedService } from '../hosted-services/types.js';
+
 export type ServiceLifetime = 'singleton' | 'scoped' | 'transient';
 
+export type ServiceToken<T> = symbol & { readonly __serviceType?: T };
+
+export function createToken<T>(description: string): ServiceToken<T> {
+  return Symbol(description) as ServiceToken<T>;
+}
+
 export type ServiceIdentifier<T = any> =
+  | ServiceToken<T>
   | string
   | symbol
   | (new (...args: any[]) => T)
@@ -29,4 +38,45 @@ export interface IServiceScope {
 
 export interface Disposable {
   dispose(): void | Promise<void>;
+}
+
+export interface IServiceCollection extends Iterable<ServiceDescriptor> {
+  readonly length: number;
+  add<T>(descriptor: ServiceDescriptor<T>): this;
+  
+  // Singleton overloads
+  addSingleton<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addSingleton<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addSingleton<T>(token: ServiceToken<T>, instance: T): this;
+  addSingleton<T>(token: ServiceIdentifier<T>, instance: T): this;
+  addSingleton<T>(implementationType: new (...args: any[]) => T): this;
+
+  // Scoped overloads
+  addScoped<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addScoped<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addScoped<T>(implementationType: new (...args: any[]) => T): this;
+
+  // Transient overloads
+  addTransient<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addTransient<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addTransient<T>(implementationType: new (...args: any[]) => T): this;
+
+  // Hosted Service
+  addHostedService<T extends HostedService>(factory: (provider: IServiceProvider) => T): this;
+  addHostedService<T extends HostedService>(implementationType: new (...args: any[]) => T): this;
+
+  // TryAdd variants
+  tryAdd<T>(descriptor: ServiceDescriptor<T>): boolean;
+  tryAddSingleton<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddSingleton<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddSingleton<T>(token: ServiceToken<T>, instance: T): boolean;
+  tryAddSingleton<T>(token: ServiceIdentifier<T>, instance: T): boolean;
+  tryAddScoped<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddScoped<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddTransient<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddTransient<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+
+  find(token: ServiceIdentifier): ServiceDescriptor | undefined;
+  findAll(token: ServiceIdentifier): ServiceDescriptor[];
+  buildServiceProvider(): IServiceProvider;
 }

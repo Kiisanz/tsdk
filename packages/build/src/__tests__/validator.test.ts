@@ -157,6 +157,8 @@ projects:
       const diag2102 = validation.diagnostics.find((d) => d.code === 'TSNX2102');
       assert.ok(diag2102);
       assert.equal(diag2102.sourceProject, 'Acme.Api');
+      assert.equal(diag2102.targetProject, 'Acme.Domain');
+      assert.ok(diag2102.fixSuggestion?.includes('@acme/domain'));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -231,7 +233,7 @@ projects:
       assert.ok(diag2101);
       assert.equal(diag2101.sourceProject, 'Acme.Api');
       assert.equal(diag2101.targetProject, 'Acme.Infra');
-      assert.equal(diag2101.fixSuggestion, 'tsnx ref add Acme.Api Acme.Infra');
+      assert.equal(diag2101.fixSuggestion, 'tsnx ref add Acme.Infra');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

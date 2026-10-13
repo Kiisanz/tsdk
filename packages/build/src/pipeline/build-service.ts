@@ -1,9 +1,25 @@
-import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
+import * as path from 'node:path';
+import { DiagnosticFormatter, ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
 import { BuildOrchestrator } from '../orchestrator/build-orchestrator.js';
 import { BuildOptions, BuildResult } from '../orchestrator/types.js';
 import { PackageSyncManager } from '../package/package-sync.js';
 import { PackageDriftItem, PackageSyncResult } from '../package/types.js';
 import { ImportValidator } from '../validator/import-validator.js';
+import { ImportDiagnostic } from '../validator/types.js';
+
+function formatDiagnostics(diagnostics: ImportDiagnostic[]): string[] {
+  return diagnostics.map((d) => {
+    return DiagnosticFormatter.format({
+      code: d.code,
+      severity: 'error',
+      file: path.relative(process.cwd(), d.filePath),
+      line: d.line,
+      column: d.column,
+      message: d.message,
+      suggestion: d.fixSuggestion,
+    });
+  });
+}
 
 export class ReferenceEnforcementError extends Error {
   constructor(
@@ -49,7 +65,7 @@ export class BuildService {
       if (options.enforceReferences !== false) {
         const validation = ImportValidator.validateWorkspace(workspace);
         if (!validation.valid) {
-          const formattedDiags = validation.diagnostics.map((d) => d.message);
+          const formattedDiags = formatDiagnostics(validation.diagnostics);
           throw new ReferenceEnforcementError(
             `Reference enforcement failed with ${validation.diagnostics.length} diagnostic error(s):\n\n` +
               formattedDiags.join('\n\n'),
@@ -91,7 +107,7 @@ export class BuildService {
       if (options.enforceReferences !== false && !options.clean) {
         const diagnostics = ImportValidator.validateProject(project, parentWorkspace);
         if (diagnostics.length > 0) {
-          const formattedDiags = diagnostics.map((d) => d.message);
+          const formattedDiags = formatDiagnostics(diagnostics);
           throw new ReferenceEnforcementError(
             `Reference enforcement failed with ${diagnostics.length} diagnostic error(s):\n\n` +
               formattedDiags.join('\n\n'),
@@ -108,7 +124,7 @@ export class BuildService {
     if (options.enforceReferences !== false && !options.clean) {
       const diagnostics = ImportValidator.validateProject(project);
       if (diagnostics.length > 0) {
-        const formattedDiags = diagnostics.map((d) => d.message);
+        const formattedDiags = formatDiagnostics(diagnostics);
         throw new ReferenceEnforcementError(
           `Reference enforcement failed with ${diagnostics.length} diagnostic error(s):\n\n` +
             formattedDiags.join('\n\n'),

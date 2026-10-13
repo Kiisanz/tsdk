@@ -1,12 +1,15 @@
 import {
+  IServiceCollection,
   IServiceProvider,
   ServiceDescriptor,
   ServiceFactory,
   ServiceIdentifier,
+  ServiceToken,
 } from './types.js';
+import { HostedService, HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 import { ServiceProvider } from './service-provider.js';
 
-export class ServiceCollection implements Iterable<ServiceDescriptor> {
+export class ServiceCollection implements IServiceCollection {
   private readonly descriptors: ServiceDescriptor[] = [];
 
   [Symbol.iterator](): Iterator<ServiceDescriptor> {
@@ -22,55 +25,94 @@ export class ServiceCollection implements Iterable<ServiceDescriptor> {
     return this;
   }
 
+  addSingleton<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addSingleton<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addSingleton<T>(token: ServiceToken<T>, instance: T): this;
   addSingleton<T>(token: ServiceIdentifier<T>, instance: T): this;
-  addSingleton<T>(token: ServiceIdentifier<T>, factory: ServiceFactory<T>): this;
-  addSingleton<T>(token: ServiceIdentifier<T>, factoryOrInstance: T | ServiceFactory<T>): this {
-    if (typeof factoryOrInstance === 'function' && !(factoryOrInstance instanceof Function && (factoryOrInstance as any).prototype && typeof (factoryOrInstance as any).prototype === 'object' && Object.getOwnPropertyNames((factoryOrInstance as any).prototype).length > 1 && !factoryOrInstance.length)) {
-      // Check if it's a factory function
+  addSingleton<T>(implementationType: new (...args: any[]) => T): this;
+  addSingleton<T>(tokenOrType: ServiceIdentifier<T>, factoryOrInstance?: T | ServiceFactory<T>): this {
+    if (factoryOrInstance === undefined && typeof tokenOrType === 'function') {
       return this.add({
-        token,
+        token: tokenOrType,
         lifetime: 'singleton',
-        factory: factoryOrInstance as ServiceFactory<T>,
+        implementationType: tokenOrType as new (...args: any[]) => T,
       });
     }
 
-    if (typeof factoryOrInstance === 'function' && factoryOrInstance.length === 1) {
-      return this.add({
-        token,
-        lifetime: 'singleton',
-        factory: factoryOrInstance as ServiceFactory<T>,
-      });
-    }
-
-    // Treated as instance or factory
     if (typeof factoryOrInstance === 'function') {
       return this.add({
-        token,
+        token: tokenOrType,
         lifetime: 'singleton',
         factory: factoryOrInstance as ServiceFactory<T>,
       });
     }
 
     return this.add({
-      token,
+      token: tokenOrType,
       lifetime: 'singleton',
       instance: factoryOrInstance,
     });
   }
 
-  addScoped<T>(token: ServiceIdentifier<T>, factory: ServiceFactory<T>): this {
+  addScoped<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addScoped<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addScoped<T>(implementationType: new (...args: any[]) => T): this;
+  addScoped<T>(tokenOrType: ServiceIdentifier<T>, factory?: ServiceFactory<T>): this {
+    if (factory === undefined && typeof tokenOrType === 'function') {
+      return this.add({
+        token: tokenOrType,
+        lifetime: 'scoped',
+        implementationType: tokenOrType as new (...args: any[]) => T,
+      });
+    }
+
     return this.add({
-      token,
+      token: tokenOrType,
       lifetime: 'scoped',
-      factory,
+      factory: factory!,
     });
   }
 
-  addTransient<T>(token: ServiceIdentifier<T>, factory: ServiceFactory<T>): this {
+  addTransient<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): this;
+  addTransient<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): this;
+  addTransient<T>(implementationType: new (...args: any[]) => T): this;
+  addTransient<T>(tokenOrType: ServiceIdentifier<T>, factory?: ServiceFactory<T>): this {
+    if (factory === undefined && typeof tokenOrType === 'function') {
+      return this.add({
+        token: tokenOrType,
+        lifetime: 'transient',
+        implementationType: tokenOrType as new (...args: any[]) => T,
+      });
+    }
+
     return this.add({
-      token,
+      token: tokenOrType,
       lifetime: 'transient',
-      factory,
+      factory: factory!,
+    });
+  }
+
+  addHostedService<T extends HostedService>(factory: (provider: IServiceProvider) => T): this;
+  addHostedService<T extends HostedService>(implementationType: new (...args: any[]) => T): this;
+  addHostedService<T extends HostedService>(
+    implementationOrFactory: (new (...args: any[]) => T) | ((sp: IServiceProvider) => T),
+  ): this {
+    if (
+      typeof implementationOrFactory === 'function' &&
+      implementationOrFactory.prototype &&
+      Object.getOwnPropertyNames(implementationOrFactory.prototype).length > 1
+    ) {
+      return this.add({
+        token: HOSTED_SERVICE_TOKEN,
+        lifetime: 'singleton',
+        implementationType: implementationOrFactory as new (...args: any[]) => T,
+      });
+    }
+
+    return this.add({
+      token: HOSTED_SERVICE_TOKEN,
+      lifetime: 'singleton',
+      factory: implementationOrFactory as (sp: IServiceProvider) => T,
     });
   }
 
@@ -83,6 +125,10 @@ export class ServiceCollection implements Iterable<ServiceDescriptor> {
     return false;
   }
 
+  tryAddSingleton<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddSingleton<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddSingleton<T>(token: ServiceToken<T>, instance: T): boolean;
+  tryAddSingleton<T>(token: ServiceIdentifier<T>, instance: T): boolean;
   tryAddSingleton<T>(token: ServiceIdentifier<T>, factoryOrInstance: T | ServiceFactory<T>): boolean {
     const exists = this.descriptors.some((d) => d.token === token);
     if (!exists) {
@@ -92,7 +138,9 @@ export class ServiceCollection implements Iterable<ServiceDescriptor> {
     return false;
   }
 
-  tryAddScoped<T>(token: ServiceIdentifier<T>, factory: ServiceFactory<T>): boolean {
+  tryAddScoped<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddScoped<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddScoped<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean {
     const exists = this.descriptors.some((d) => d.token === token);
     if (!exists) {
       this.addScoped(token, factory);
@@ -101,7 +149,9 @@ export class ServiceCollection implements Iterable<ServiceDescriptor> {
     return false;
   }
 
-  tryAddTransient<T>(token: ServiceIdentifier<T>, factory: ServiceFactory<T>): boolean {
+  tryAddTransient<T>(token: ServiceToken<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddTransient<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean;
+  tryAddTransient<T>(token: ServiceIdentifier<T>, factory: (provider: IServiceProvider) => T): boolean {
     const exists = this.descriptors.some((d) => d.token === token);
     if (!exists) {
       this.addTransient(token, factory);
