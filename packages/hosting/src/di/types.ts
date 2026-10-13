@@ -15,6 +15,11 @@ export function createToken<T>(description: string): ServiceToken<T> {
 export type Constructor<T = any> = new (...args: any[]) => T;
 export type AbstractConstructor<T = any> = abstract new (...args: any[]) => T;
 
+export type ConstructorDependencies<C> =
+  C extends new (...args: infer TArgs) => any
+    ? { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+    : never;
+
 export type InjectionToken<T = any> =
   | ServiceToken<T>
   | Constructor<T>
@@ -68,18 +73,18 @@ export interface ServiceProviderOptions {
 
 export interface IBindingBuilder<T> {
   toClass(): IServiceCollection;
-  toClass<TArgs extends any[]>(
-    ctor: new (...args: TArgs) => T,
-    ...tokens: { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+  toClass<C extends new (...args: any[]) => T>(
+    ctor: C,
+    ...dependencies: ConstructorDependencies<C>
   ): IServiceCollection;
   toFactory(factory: (sp: IServiceProvider) => T): IServiceCollection;
   toInstance(instance: T): IServiceCollection;
 }
 
 export interface IHostedServiceBindingBuilder {
-  toClass<T extends HostedService, TArgs extends any[]>(
-    ctor: new (...args: TArgs) => T,
-    ...tokens: { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+  toClass<T extends HostedService, C extends new (...args: any[]) => T>(
+    ctor: C,
+    ...dependencies: ConstructorDependencies<C>
   ): IServiceCollection;
   toFactory<T extends HostedService>(
     factory: (sp: IServiceProvider) => T

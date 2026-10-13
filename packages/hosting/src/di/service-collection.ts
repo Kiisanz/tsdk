@@ -1,4 +1,5 @@
 import {
+  ConstructorDependencies,
   IBindingBuilder,
   IHostedServiceBindingBuilder,
   InjectionToken,
@@ -19,71 +20,46 @@ class BindingBuilder<T> implements IBindingBuilder<T> {
     private readonly collection: ServiceCollection,
     private readonly token: InjectionToken<T>,
     private readonly lifetime: ServiceLifetime,
-    private descriptor?: ServiceDescriptor<T>,
   ) {}
 
   toClass(): IServiceCollection;
-  toClass<TArgs extends any[]>(
-    ctor: new (...args: TArgs) => T,
-    ...tokens: { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+  toClass<C extends new (...args: any[]) => T>(
+    ctor: C,
+    ...dependencies: ConstructorDependencies<C>
   ): IServiceCollection;
-  toClass<TArgs extends any[]>(
-    ctor?: new (...args: TArgs) => T,
-    ...tokens: { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+  toClass<C extends new (...args: any[]) => T>(
+    ctor?: C,
+    ...dependencies: ConstructorDependencies<C>
   ): IServiceCollection {
     const implType = ctor ?? (typeof this.token === 'function' ? (this.token as any) : undefined);
     if (!implType) {
       throw new Error(`Cannot register toClass without an implementation class for token "${String(this.token)}".`);
     }
 
-    if (this.descriptor) {
-      this.descriptor.implementationType = implType;
-      this.descriptor.dependencies = tokens.length > 0 ? (tokens as any) : undefined;
-      delete this.descriptor.factory;
-      delete this.descriptor.instance;
-    } else {
-      this.descriptor = {
-        token: this.token,
-        lifetime: this.lifetime,
-        implementationType: implType,
-        dependencies: tokens.length > 0 ? (tokens as any) : undefined,
-      };
-      this.collection.add(this.descriptor);
-    }
+    this.collection.add({
+      token: this.token,
+      lifetime: this.lifetime,
+      implementationType: implType,
+      dependencies: dependencies.length > 0 ? (dependencies as any) : undefined,
+    });
     return this.collection;
   }
 
   toFactory(factory: (sp: IServiceProvider) => T): IServiceCollection {
-    if (this.descriptor) {
-      this.descriptor.factory = factory;
-      delete this.descriptor.implementationType;
-      delete this.descriptor.dependencies;
-      delete this.descriptor.instance;
-    } else {
-      this.descriptor = {
-        token: this.token,
-        lifetime: this.lifetime,
-        factory,
-      };
-      this.collection.add(this.descriptor);
-    }
+    this.collection.add({
+      token: this.token,
+      lifetime: this.lifetime,
+      factory,
+    });
     return this.collection;
   }
 
   toInstance(instance: T): IServiceCollection {
-    if (this.descriptor) {
-      this.descriptor.instance = instance;
-      delete this.descriptor.implementationType;
-      delete this.descriptor.dependencies;
-      delete this.descriptor.factory;
-    } else {
-      this.descriptor = {
-        token: this.token,
-        lifetime: this.lifetime,
-        instance,
-      };
-      this.collection.add(this.descriptor);
-    }
+    this.collection.add({
+      token: this.token,
+      lifetime: this.lifetime,
+      instance,
+    });
     return this.collection;
   }
 }
@@ -91,17 +67,17 @@ class BindingBuilder<T> implements IBindingBuilder<T> {
 class HostedServiceBindingBuilder implements IHostedServiceBindingBuilder {
   constructor(private readonly collection: ServiceCollection) {}
 
-  toClass<T extends HostedService, TArgs extends any[]>(
-    ctor: new (...args: TArgs) => T,
-    ...tokens: { [K in keyof TArgs]: InjectionToken<TArgs[K]> }
+  toClass<T extends HostedService, C extends new (...args: any[]) => T>(
+    ctor: C,
+    ...dependencies: ConstructorDependencies<C>
   ): IServiceCollection {
     this.collection.add({
       token: HOSTED_SERVICE_TOKEN,
       lifetime: 'singleton',
       implementationType: ctor,
-      dependencies: tokens as any,
+      dependencies: dependencies as any,
       factory: (sp) => {
-        const args = tokens.map((t) => sp.get(t));
+        const args = (dependencies as any[]).map((t) => sp.get(t));
         return new ctor(...(args as any));
       },
     });
@@ -146,15 +122,6 @@ export class ServiceCollection implements IServiceCollection {
     factoryOrInstance?: T | ServiceFactory<T>,
   ): IBindingBuilder<T> | this {
     if (factoryOrInstance === undefined) {
-      if (typeof tokenOrType === 'function') {
-        const descriptor: ServiceDescriptor<T> = {
-          token: tokenOrType,
-          lifetime: 'singleton',
-          implementationType: tokenOrType as new (...args: any[]) => T,
-        };
-        this.add(descriptor);
-        return new BindingBuilder<T>(this, tokenOrType, 'singleton', descriptor);
-      }
       return new BindingBuilder<T>(this, tokenOrType as InjectionToken<T>, 'singleton');
     }
 
@@ -181,15 +148,6 @@ export class ServiceCollection implements IServiceCollection {
     factory?: ServiceFactory<T>,
   ): IBindingBuilder<T> | this {
     if (factory === undefined) {
-      if (typeof tokenOrType === 'function') {
-        const descriptor: ServiceDescriptor<T> = {
-          token: tokenOrType,
-          lifetime: 'scoped',
-          implementationType: tokenOrType as new (...args: any[]) => T,
-        };
-        this.add(descriptor);
-        return new BindingBuilder<T>(this, tokenOrType, 'scoped', descriptor);
-      }
       return new BindingBuilder<T>(this, tokenOrType as InjectionToken<T>, 'scoped');
     }
 
@@ -208,15 +166,6 @@ export class ServiceCollection implements IServiceCollection {
     factory?: ServiceFactory<T>,
   ): IBindingBuilder<T> | this {
     if (factory === undefined) {
-      if (typeof tokenOrType === 'function') {
-        const descriptor: ServiceDescriptor<T> = {
-          token: tokenOrType,
-          lifetime: 'transient',
-          implementationType: tokenOrType as new (...args: any[]) => T,
-        };
-        this.add(descriptor);
-        return new BindingBuilder<T>(this, tokenOrType, 'transient', descriptor);
-      }
       return new BindingBuilder<T>(this, tokenOrType as InjectionToken<T>, 'transient');
     }
 

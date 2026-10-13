@@ -149,8 +149,8 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       const ret = builder.toClass(TaskService, TaskRepo, LOGGER);
       assert.equal(ret, services);
 
-      // F-010: Standalone class registration without .toClass() remains valid
-      services.addSingleton(StandaloneWorker);
+      // F-010: Explicit self-registration using .toClass()
+      services.addSingleton(StandaloneWorker).toClass();
 
       const root = services.buildServiceProvider();
       const scope = root.createScope();
@@ -164,6 +164,42 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       const worker = root.get(StandaloneWorker);
       assert.ok(worker instanceof StandaloneWorker);
       assert.equal(worker.ready, true);
+    });
+
+    it('guarantees atomic registration: abandoned builder does NOT commit partial descriptor', () => {
+      const UNCOMMITTED = createToken<string>('Uncommitted');
+      class IncompleteService {
+        constructor(public requiredDep: string) {}
+      }
+
+      const services = new ServiceCollection();
+
+      // Developer calls addScoped or addSingleton but forgets terminal method
+      services.addScoped(UNCOMMITTED);
+      services.addSingleton(IncompleteService);
+
+      // Descriptors must remain 0 - no partial registrations!
+      assert.equal(services.length, 0);
+
+      const sp = services.buildServiceProvider();
+
+      // Resolving uncommitted token throws ServiceNotFoundError
+      assert.throws(
+        () => sp.get(UNCOMMITTED),
+        (err: unknown) => {
+          assert.ok(err instanceof ServiceNotFoundError);
+          return true;
+        },
+      );
+
+      // Resolving incomplete class service also throws ServiceNotFoundError (does NOT silently instantiate)
+      assert.throws(
+        () => sp.get(IncompleteService),
+        (err: unknown) => {
+          assert.ok(err instanceof ServiceNotFoundError);
+          return true;
+        },
+      );
     });
   });
 
@@ -308,7 +344,7 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       builder.options.registerSignalHandlers = false;
 
       // Register WorkerState with class token
-      builder.services.addSingleton(WorkerState);
+      builder.services.addSingleton(WorkerState).toClass();
 
       // Register hosted service using class token dependency
       builder.services.addHostedService().toClass(StateWorker, WorkerState);
