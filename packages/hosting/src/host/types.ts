@@ -1,8 +1,8 @@
 import { IConfiguration } from '../config/types.js';
-import { IServiceProvider } from '../di/types.js';
+import { IServiceProviderRoot } from '../di/types.js';
 
 export interface IHost {
-  readonly services: IServiceProvider;
+  readonly services: IServiceProviderRoot;
   readonly config: IConfiguration;
   readonly currentState?: string;
   start(): Promise<void>;

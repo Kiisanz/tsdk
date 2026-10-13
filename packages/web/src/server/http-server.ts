@@ -1,6 +1,6 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
-import { HostedService, ILogger, IServiceProvider } from '@tsnx/hosting';
+import { HostedService, ILogger, IServiceProviderRoot } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RequestDelegate } from '../middleware/pipeline.js';
 
@@ -18,7 +18,7 @@ export class HttpServerHostedService implements HostedService {
   private server?: Server;
   private readonly sockets = new Set<Socket>();
   private readonly handler: RequestDelegate;
-  private readonly rootServices: IServiceProvider;
+  private rootServices?: IServiceProviderRoot;
   private readonly logger?: ILogger;
   private readonly port: number;
   private readonly host: string;
@@ -28,7 +28,7 @@ export class HttpServerHostedService implements HostedService {
 
   constructor(
     handler: RequestDelegate,
-    rootServices: IServiceProvider,
+    rootServices?: IServiceProviderRoot,
     options: HttpServerOptions = {},
     logger?: ILogger
   ) {
@@ -48,6 +48,10 @@ export class HttpServerHostedService implements HostedService {
       return address.port;
     }
     return undefined;
+  }
+
+  public setRootServices(services: IServiceProviderRoot): void {
+    this.rootServices = services;
   }
 
   public async start(signal: AbortSignal): Promise<void> {
@@ -169,7 +173,7 @@ export class HttpServerHostedService implements HostedService {
     }
 
     // Create a new request-scoped DI container
-    const requestScope = this.rootServices.createScope();
+    const requestScope = this.rootServices!.createScope();
 
     const ctx = new HttpContext(
       req,

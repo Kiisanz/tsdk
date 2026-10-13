@@ -8,8 +8,9 @@ function formatToken(token: ServiceIdentifier): string {
 }
 
 export class ServiceNotFoundError extends Error {
-  constructor(token: ServiceIdentifier) {
-    super(`No service registered for token "${formatToken(token)}".`);
+  constructor(token: ServiceIdentifier, consumerToken?: ServiceIdentifier) {
+    const context = consumerToken ? ` required by "${formatToken(consumerToken)}"` : '';
+    super(`No service registered for token "${formatToken(token)}"${context}.`);
     this.name = 'ServiceNotFoundError';
   }
 }

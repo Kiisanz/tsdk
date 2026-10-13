@@ -3,10 +3,8 @@ import {
   ServiceCollection,
   IConfiguration,
   LoggerFactory,
-  ILoggerFactory,
-  HOSTED_SERVICE_TOKEN,
   IHost,
-  IServiceProvider,
+  IServiceProviderRoot,
 } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
@@ -71,7 +69,7 @@ export class WebApplication {
     this.serverOptions = serverOptions;
   }
 
-  public get services(): IServiceProvider {
+  public get services(): IServiceProviderRoot {
     if (!this.appHost) {
       throw new Error('Application has not been started yet. Call start() or run() first.');
     }
@@ -162,16 +160,16 @@ export class WebApplication {
 
     const finalPipeline = this.pipeline.build(routingDelegate);
 
-    // Register HttpServerHostedService in DI
-    this.hostBuilder.services.addSingleton(HOSTED_SERVICE_TOKEN, (sp: IServiceProvider) => {
-      const loggerFactory = sp.getOptional<ILoggerFactory>(LoggerFactory);
-      const logger = loggerFactory?.createLogger('HttpServer');
-      const service = new HttpServerHostedService(finalPipeline, sp, this.serverOptions, logger);
-      this.serverHostedService = service;
-      return service;
-    });
+    // Register HttpServerHostedService in DI and bind root provider
+    const loggerFactory = this.hostBuilder.logging;
+    const logger = loggerFactory.createLogger('HttpServer');
+    const service = new HttpServerHostedService(finalPipeline, undefined, this.serverOptions, logger);
+    this.serverHostedService = service;
+
+    this.hostBuilder.services.addHostedService(() => service);
 
     this.appHost = this.hostBuilder.build();
+    service.setRootServices(this.appHost.services);
   }
 
   public async start(): Promise<void> {

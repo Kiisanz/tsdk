@@ -53,6 +53,13 @@ export class HostApplicationBuilder {
         hostedServices.push(desc.instance);
       } else if (desc.factory) {
         hostedServices.push(desc.factory(serviceProvider));
+      } else if (desc.implementationType) {
+        if (desc.dependencies && desc.dependencies.length > 0) {
+          const args = desc.dependencies.map((token) => serviceProvider.get(token));
+          hostedServices.push(new desc.implementationType(...args));
+        } else {
+          hostedServices.push(new desc.implementationType());
+        }
       }
     }
 
