@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ProjectGraph, TsProject, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
 import {
   GeneratedConfigFile,
   GeneratedConfigResult,
@@ -31,7 +31,7 @@ export class ConfigGenerator {
     workspace: TsWorkspace,
     graph: ProjectGraph,
   ): GeneratedConfigResult {
-    const generatedDir = path.resolve(workspace.directory, '.tsdk', 'generated');
+    const generatedDir = path.resolve(workspace.directory, '.tsnx', 'generated');
     const files: GeneratedConfigFile[] = [];
 
     const rootReferences: TsConfigReference[] = [];
@@ -111,7 +111,7 @@ export class ConfigGenerator {
     project: TsProject,
     graph: ProjectGraph,
   ): GeneratedConfigResult {
-    const generatedDir = path.resolve(project.directory, '.tsdk', 'generated');
+    const generatedDir = path.resolve(project.directory, '.tsnx', 'generated');
     const files: GeneratedConfigFile[] = [];
 
     const node = graph.getNode(project.name);

@@ -21,7 +21,7 @@ Subcommands:
   if (subCommand === 'init') {
     const wsName = args[0];
     if (!wsName) {
-      console.error('[TSDK Error] Please specify a workspace name: tsdk workspace init <name>');
+      console.error('[TSNX Error] Please specify a workspace name: tsnx workspace init <name>');
       return 1;
     }
 
@@ -38,13 +38,13 @@ Subcommands:
   if (subCommand === 'add') {
     const projectPath = args[0];
     if (!projectPath) {
-      console.error('[TSDK Error] Please specify a project path: tsdk workspace add <projectPath>');
+      console.error('[TSNX Error] Please specify a project path: tsnx workspace add <projectPath>');
       return 1;
     }
 
     const ws = context?.kind === 'workspace' ? context.workspace : context?.parentWorkspace;
     if (!ws) {
-      console.error('[TSDK Error] No workspace (*.tswork) found in current or parent directories to add the project to.');
+      console.error('[TSNX Error] No workspace (*.tswork) found in current or parent directories to add the project to.');
       return 1;
     }
 
@@ -58,6 +58,6 @@ Subcommands:
     }
   }
 
-  console.error(`[TSDK Error] Unknown workspace subcommand: "${subCommand}". Run "tsdk workspace" for help.`);
+  console.error(`[TSNX Error] Unknown workspace subcommand: "${subCommand}". Run "tsnx workspace" for help.`);
   return 1;
 }

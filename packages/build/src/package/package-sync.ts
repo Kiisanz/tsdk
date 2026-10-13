@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ProjectGraph, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsWorkspace } from '@tsnx/core';
 import {
   MissingPackageDependency,
   PackageDriftItem,

@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BuildService } from '@tsdk/build';
+import { BuildService } from '@tsnx/build';
 import { TsdkContext } from '../discovery.js';
 
 export async function runApp(context: TsdkContext, appArgs: string[]): Promise<number> {
   if (context.kind !== 'project') {
-    console.error(`[TSDK Error] "tsdk run" can only be executed within a project directory.`);
-    console.error(`Navigate into a project directory (e.g., cd apps/MyApp) or use "tsdk build" for workspace.`);
+    console.error(`[TSNX Error] "tsnx run" can only be executed within a project directory.`);
+    console.error(`Navigate into a project directory (e.g., cd apps/MyApp) or use "tsnx build" for workspace.`);
     return 1;
   }
 
@@ -16,7 +16,7 @@ export async function runApp(context: TsdkContext, appArgs: string[]): Promise<n
   // 1. Auto-build project before running
   try {
     if (context.parentWorkspace) {
-      console.log(`[TSDK] Building "${project.name}"...`);
+      console.log(`[TSNX] Building "${project.name}"...`);
     }
     await BuildService.buildProject(project, {}, context.parentWorkspace);
   } catch (err: unknown) {
@@ -46,7 +46,7 @@ export async function runApp(context: TsdkContext, appArgs: string[]): Promise<n
     } else if (fs.existsSync(fallbackIndex)) {
       entryJsPath = fallbackIndex;
     } else {
-      console.error(`[TSDK Error] Compiled entry file not found: "${entryJsPath}". Ensure project has an entry point.`);
+      console.error(`[TSNX Error] Compiled entry file not found: "${entryJsPath}". Ensure project has an entry point.`);
       return 1;
     }
   }
@@ -77,7 +77,7 @@ export async function runApp(context: TsdkContext, appArgs: string[]): Promise<n
     child.on('error', (err) => {
       process.removeListener('SIGINT', forwardSignal);
       process.removeListener('SIGTERM', forwardSignal);
-      console.error(`[TSDK Error] Failed to launch application:`, err);
+      console.error(`[TSNX Error] Failed to launch application:`, err);
       resolve(1);
     });
   });

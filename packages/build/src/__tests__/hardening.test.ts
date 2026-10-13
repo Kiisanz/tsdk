@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectGraph, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsWorkspace } from '@tsnx/core';
 import { ConfigGenerator, relPosix } from '../generator/index.js';
 import { PackageSyncManager } from '../package/index.js';
 import { BuildService, PackageDriftError } from '../pipeline/index.js';
@@ -215,7 +215,7 @@ projects:
         (err: unknown) => {
           assert.ok(err instanceof PackageDriftError);
           assert.ok(err.message.includes('Package dependencies are out of sync'));
-          assert.ok(err.message.includes('tsdk restore'));
+          assert.ok(err.message.includes('tsnx restore'));
           return true;
         },
       );
@@ -275,7 +275,7 @@ projects:
     }
   });
 
-  it('single project build does not prune configs of other projects in .tsdk/generated', () => {
+  it('single project build does not prune configs of other projects in .tsnx/generated', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-harden-single-prune-'));
 
     try {
@@ -449,7 +449,7 @@ projects:
 
   it('validates Windows path resolution, drive letters, backslashes, and cross-platform manifest paths', () => {
     // 1. Test Windows path resolution with path.win32 (drive letters & backslashes)
-    const win32From = 'C:\\Users\\User\\Project\\.tsdk\\generated';
+    const win32From = 'C:\\Users\\User\\Project\\.tsnx\\generated';
     const win32ToSrc = 'C:\\Users\\User\\Project\\apps\\Acme.Api\\src';
     const win32ToDist = 'C:\\Users\\User\\Project\\apps\\Acme.Api\\dist';
 

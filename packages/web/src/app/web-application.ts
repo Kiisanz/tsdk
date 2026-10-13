@@ -7,7 +7,7 @@ import {
   HOSTED_SERVICE_TOKEN,
   IHost,
   IServiceProvider,
-} from '@tsdk/hosting';
+} from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
 import { Middleware, MiddlewarePipeline, RequestDelegate } from '../middleware/pipeline.js';

@@ -1,6 +1,6 @@
-# @tsdk/hosting
+# @tsnx/hosting
 
-Application hosting foundation for TSDK, inspired by ASP.NET Core Generic Host.
+Application hosting foundation for TSNX, inspired by ASP.NET Core Generic Host.
 
 ## Features
 
@@ -19,7 +19,7 @@ Application hosting foundation for TSDK, inspired by ASP.NET Core Generic Host.
 ## Installation
 
 ```bash
-npm install @tsdk/hosting
+npm install @tsnx/hosting
 ```
 
 ## License

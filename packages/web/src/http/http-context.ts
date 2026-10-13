@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse, validateHeaderName, validateHeaderValue } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { IServiceProvider } from '@tsdk/hosting';
+import { IServiceProvider } from '@tsnx/hosting';
 
 export class HttpRequest {
   public readonly method: string;

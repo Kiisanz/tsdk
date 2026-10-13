@@ -1,6 +1,6 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
-import { HostedService, ILogger, IServiceProvider } from '@tsdk/hosting';
+import { HostedService, ILogger, IServiceProvider } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RequestDelegate } from '../middleware/pipeline.js';
 

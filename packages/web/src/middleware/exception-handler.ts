@@ -1,6 +1,6 @@
 import { HttpContext } from '../http/http-context.js';
 import { RequestDelegate } from './pipeline.js';
-import { ILogger } from '@tsdk/hosting';
+import { ILogger } from '@tsnx/hosting';
 
 export interface ErrorHandlerOptions {
   includeDetails?: boolean;

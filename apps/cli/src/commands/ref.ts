@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
-import { ProjectGraph } from '@tsdk/core';
-import { PackageSyncManager } from '@tsdk/build';
+import { ProjectGraph } from '@tsnx/core';
+import { PackageSyncManager } from '@tsnx/build';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { TsdkContext } from '../discovery.js';
 
@@ -12,27 +12,27 @@ export function runRef(
   if (!subCommand || subCommand === 'help') {
     console.log(`
 Usage:
-  tsdk ref add <targetProject>    Add a project reference to the current project
+  tsnx ref add <targetProject>    Add a project reference to the current project
 
 Examples:
-  tsdk ref add Acme.Domain
+  tsnx ref add Acme.Domain
 `);
     return 0;
   }
 
   if (subCommand !== 'add') {
-    console.error(`[TSDK Error] Unknown ref subcommand: "${subCommand}". Run "tsdk ref --help".`);
+    console.error(`[TSNX Error] Unknown ref subcommand: "${subCommand}". Run "tsnx ref --help".`);
     return 1;
   }
 
   const targetName = args[0];
   if (!targetName) {
-    console.error('[TSDK Error] Please specify target project: tsdk ref add <targetProject>');
+    console.error('[TSNX Error] Please specify target project: tsnx ref add <targetProject>');
     return 1;
   }
 
   if (!context || context.kind !== 'project') {
-    console.error('[TSDK Error] "tsdk ref add" must be run inside a project directory.');
+    console.error('[TSNX Error] "tsnx ref add" must be run inside a project directory.');
     return 1;
   }
 
@@ -40,7 +40,7 @@ Examples:
   const ws = context.parentWorkspace;
 
   if (targetName.toLowerCase() === currentProject.name.toLowerCase()) {
-    console.error(`[TSDK Error] Cannot reference self ("${currentProject.name}").`);
+    console.error(`[TSNX Error] Cannot reference self ("${currentProject.name}").`);
     return 1;
   }
 
@@ -48,7 +48,7 @@ Examples:
   if (ws) {
     const targetProj = ws.getProject(targetName);
     if (!targetProj) {
-      console.error(`[TSDK Error] Referenced project "${targetName}" not found in workspace "${ws.name}".`);
+      console.error(`[TSNX Error] Referenced project "${targetName}" not found in workspace "${ws.name}".`);
       return 1;
     }
     matchedTargetName = targetProj.name;
@@ -72,7 +72,7 @@ Examples:
     );
 
     if (alreadyReferenced) {
-      console.log(`[TSDK] Reference to "${matchedTargetName}" already exists in "${currentProject.name}".`);
+      console.log(`[TSNX] Reference to "${matchedTargetName}" already exists in "${currentProject.name}".`);
       return 0;
     }
 

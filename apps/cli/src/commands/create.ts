@@ -10,30 +10,30 @@ export function runCreate(
   if (!templateInput || !nameInput) {
     console.error(`
 Usage:
-  tsdk create <template> <name>
+  tsnx create <template> <name>
 
 Templates:
   console    Executable console application
   library    Reusable TypeScript library package
-  webapi     HTTP Web API application powered by @tsdk/web
+  webapi     HTTP Web API application powered by @tsnx/web
 
 Examples:
-  tsdk create console HelloWorld
-  tsdk create library MyLib
-  tsdk create webapi MyApi
+  tsnx create console HelloWorld
+  tsnx create library MyLib
+  tsnx create webapi MyApi
 `);
     return 1;
   }
 
   const template = templateInput.toLowerCase();
   if (template !== 'console' && template !== 'library' && template !== 'webapi') {
-    console.error(`[TSDK Error] Unknown template "${templateInput}". Supported templates: console, library, webapi.`);
+    console.error(`[TSNX Error] Unknown template "${templateInput}". Supported templates: console, library, webapi.`);
     return 1;
   }
 
   const name = nameInput.trim();
   if (!name || !/^[A-Za-z0-9_.-]+$/.test(name)) {
-    console.error(`[TSDK Error] Invalid project name "${nameInput}". Must contain only alphanumeric characters, dots, dashes, or underscores.`);
+    console.error(`[TSNX Error] Invalid project name "${nameInput}". Must contain only alphanumeric characters, dots, dashes, or underscores.`);
     return 1;
   }
 
@@ -55,9 +55,9 @@ Examples:
     console.log(`\nNext steps:`);
     console.log(`  cd ${name}`);
     if (template === 'console' || template === 'webapi') {
-      console.log(`  tsdk run`);
+      console.log(`  tsnx run`);
     } else {
-      console.log(`  tsdk build`);
+      console.log(`  tsnx build`);
     }
     console.log('');
     return 0;

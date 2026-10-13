@@ -1,4 +1,4 @@
-export type DiagnosticCode = 'TSDK2101' | 'TSDK2102' | 'TSDK2103';
+export type DiagnosticCode = 'TSNX2101' | 'TSNX2102' | 'TSNX2103';
 
 export interface ImportDiagnostic {
   code: DiagnosticCode;

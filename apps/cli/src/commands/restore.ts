@@ -1,15 +1,15 @@
-import { BuildService } from '@tsdk/build';
+import { BuildService } from '@tsnx/build';
 import { TsdkContext } from '../discovery.js';
 
 export async function runRestore(context: TsdkContext): Promise<number> {
   const ws = context.kind === 'workspace' ? context.workspace : context.parentWorkspace;
 
   if (!ws) {
-    console.log('[TSDK] Restore is only applicable to workspaces with project registries.');
+    console.log('[TSNX] Restore is only applicable to workspaces with project registries.');
     return 0;
   }
 
-  console.log(`[TSDK] Restoring dependencies for workspace "${ws.name}"...`);
+  console.log(`[TSNX] Restoring dependencies for workspace "${ws.name}"...`);
 
   const result = BuildService.restoreWorkspace(ws);
 

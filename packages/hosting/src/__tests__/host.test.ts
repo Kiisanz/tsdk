@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AppHost, BackgroundService } from '../index.js';
 
-describe('@tsdk/hosting: AppHost & HostApplicationBuilder', () => {
+describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
   it('distinguishes start() and run() contracts', async () => {
     let serviceRunning = false;
     let serviceStopped = false;

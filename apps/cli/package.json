@@ -1,11 +1,11 @@
 {
-  "name": "@tsdk/cli",
+  "name": "@tsnx/cli",
   "version": "0.1.0-rc.1",
-  "description": "TSDK CLI - Developer interface for TSDK projects and workspaces",
+  "description": "TSNX CLI - Developer interface for TypeScript projects and workspaces",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "tsdk": "./dist/index.js"
+    "tsnx": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,8 +34,8 @@
     "test": "node --test dist/__tests__/**/*.test.js"
   },
   "dependencies": {
-    "@tsdk/build": "workspace:*",
-    "@tsdk/core": "workspace:*",
+    "@tsnx/build": "workspace:*",
+    "@tsnx/core": "workspace:*",
     "yaml": "^2.9.1"
   }
 }

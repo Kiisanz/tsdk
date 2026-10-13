@@ -175,10 +175,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@tsdk/build':
+      '@tsnx/build':
         specifier: workspace:*
         version: link:../../packages/build
-      '@tsdk/core':
+      '@tsnx/core':
         specifier: workspace:*
         version: link:../../packages/core
       yaml:
@@ -187,7 +187,7 @@ importers:
 
   packages/build:
     dependencies:
-      '@tsdk/core':
+      '@tsnx/core':
         specifier: workspace:*
         version: link:../core
       '@types/node':
@@ -211,7 +211,7 @@ importers:
 
   packages/web:
     dependencies:
-      '@tsdk/hosting':
+      '@tsnx/hosting':
         specifier: workspace:*
         version: link:../hosting
       '@types/node':

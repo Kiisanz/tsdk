@@ -3,7 +3,7 @@ import { ProjectReference, ProjectType, TsProjectManifest } from './types.js';
 
 export class ProjectValidationError extends Error {
   public readonly code: string;
-  constructor(message: string, public readonly filePath?: string, code = 'TSDK1001') {
+  constructor(message: string, public readonly filePath?: string, code = 'TSNX1001') {
     super(filePath ? `${filePath} error ${code}: ${message}` : `error ${code}: ${message}`);
     this.name = 'ProjectValidationError';
     this.code = code;

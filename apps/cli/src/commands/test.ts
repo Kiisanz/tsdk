@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BuildService } from '@tsdk/build';
-import { TsProject, TsWorkspace } from '@tsdk/core';
+import { BuildService } from '@tsnx/build';
+import { TsProject, TsWorkspace } from '@tsnx/core';
 import { TsdkContext } from '../discovery.js';
 
 export interface TestOptions {
@@ -57,7 +57,7 @@ async function runTestsForProject(project: TsProject): Promise<{ success: boolea
     });
 
     child.on('error', (err) => {
-      console.error(`[TSDK Error] Failed to launch test runner:`, err);
+      console.error(`[TSNX Error] Failed to launch test runner:`, err);
       resolve({ success: false, foundCount: testFiles.length });
     });
   });
@@ -74,10 +74,10 @@ export async function runTestCommand(
   // 1. Compile project/workspace first using existing BuildService
   console.log(
     isWorkspace && targetWorkspace
-      ? `[TSDK] Building workspace "${targetWorkspace.name}" before test...`
+      ? `[TSNX] Building workspace "${targetWorkspace.name}" before test...`
       : context.kind === 'project'
-      ? `[TSDK] Building project "${context.project.name}" before test...`
-      : `[TSDK] Building before test...`,
+      ? `[TSNX] Building project "${context.project.name}" before test...`
+      : `[TSNX] Building before test...`,
   );
 
   try {
@@ -114,7 +114,7 @@ export async function runTestCommand(
 
   // 3. Explicit reporting when no test files found (no silent success)
   if (totalTestsFound === 0) {
-    console.log(`\n[TSDK Warning] No test files found (*.test.js or *.spec.js in dist/).`);
+    console.log(`\n[TSNX Warning] No test files found (*.test.js or *.spec.js in dist/).`);
     return 0;
   }
 

@@ -1,4 +1,4 @@
-import { ProjectGraph, TsProject, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
 import { BuildOrchestrator } from '../orchestrator/build-orchestrator.js';
 import { BuildOptions, BuildResult } from '../orchestrator/types.js';
 import { PackageSyncManager } from '../package/package-sync.js';
@@ -67,7 +67,7 @@ export class BuildService {
             : `[${d.project}] stale unreferenced dependency "${d.packageName}: workspace:*"`,
         );
         throw new PackageDriftError(
-          `Package dependencies are out of sync with project manifests:\n  - ${details.join('\n  - ')}\n\nFix: Run "tsdk restore" to synchronize package.json.`,
+          `Package dependencies are out of sync with project manifests:\n  - ${details.join('\n  - ')}\n\nFix: Run "tsnx restore" to synchronize package.json.`,
           pkgValidation.drifts,
         );
       }

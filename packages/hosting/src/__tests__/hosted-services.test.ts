@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BackgroundService } from '../hosted-services/index.js';
 
-describe('@tsdk/hosting: Hosted Services', () => {
+describe('@tsnx/hosting: Hosted Services', () => {
   it('executes background service and signals cancellation gracefully on stop', async () => {
     let loopCount = 0;
     let stoppedCleanly = false;

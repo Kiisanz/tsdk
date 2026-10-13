@@ -11,7 +11,7 @@ import {
   MemoryConfigurationProvider,
 } from '../config/index.js';
 
-describe('@tsdk/hosting: Configuration Pipeline', () => {
+describe('@tsnx/hosting: Configuration Pipeline', () => {
   it('respects provider priority: defaults < json < env < cli', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-cfg-'));
 

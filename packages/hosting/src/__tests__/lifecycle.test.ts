@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { HostedService } from '../hosted-services/index.js';
 import { HostApplicationLifetime, HostLifecycleCoordinator } from '../lifecycle/index.js';
 
-describe('@tsdk/hosting: Lifecycle Coordinator', () => {
+describe('@tsnx/hosting: Lifecycle Coordinator', () => {
   it('starts services in sequence and stops services in reverse order', async () => {
     const events: string[] = [];
 

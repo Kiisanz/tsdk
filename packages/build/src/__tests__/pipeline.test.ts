@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { TsWorkspace } from '@tsdk/core';
+import { TsWorkspace } from '@tsnx/core';
 import { BuildService, ReferenceEnforcementError } from '../pipeline/index.js';
 
 describe('Milestone M5: Build Lifecycle & Pipeline', () => {
@@ -213,7 +213,7 @@ projects:
         () => BuildService.buildWorkspace(workspace),
         (err: unknown) => {
           assert.ok(err instanceof ReferenceEnforcementError);
-          assert.ok(err.message.includes('TSDK2102'));
+          assert.ok(err.message.includes('TSNX2102'));
           return true;
         },
       );

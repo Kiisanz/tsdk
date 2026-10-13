@@ -1,7 +1,7 @@
 {
-  "name": "@tsdk/web",
+  "name": "@tsnx/web",
   "version": "0.1.0-rc.1",
-  "description": "TSDK Web API Foundation - HTTP server, routing, middleware pipeline, and request-scoped lifecycle",
+  "description": "TSNX Web API Foundation - HTTP server, routing, middleware pipeline, and request-scoped lifecycle",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,7 +31,7 @@
     "test": "node --test dist/__tests__/**/*.test.js"
   },
   "dependencies": {
-    "@tsdk/hosting": "workspace:*",
+    "@tsnx/hosting": "workspace:*",
     "@types/node": "^22.13.9"
   }
 }

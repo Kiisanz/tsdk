@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { TsProject, TsWorkspace } from '@tsdk/core';
+import { TsProject, TsWorkspace } from '@tsnx/core';
 
 export type TsdkContext =
   | { kind: 'workspace'; workspace: TsWorkspace; filePath: string }

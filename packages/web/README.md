@@ -1,6 +1,6 @@
-# @tsdk/web
+# @tsnx/web
 
-High-performance HTTP Web API framework for TSDK, powered by Node.js native `node:http`.
+High-performance HTTP Web API framework for TSNX, powered by Node.js native `node:http`.
 
 ## Features
 
@@ -13,19 +13,19 @@ High-performance HTTP Web API framework for TSDK, powered by Node.js native `nod
 ## Installation
 
 ```bash
-npm install @tsdk/web @tsdk/hosting
+npm install @tsnx/web @tsnx/hosting
 ```
 
 ## Quick Example
 
 ```typescript
 import process from 'node:process';
-import { WebApplication, Results } from '@tsdk/web';
+import { WebApplication, Results } from '@tsnx/web';
 
 const builder = WebApplication.createBuilder(process.argv.slice(2));
 const app = builder.build();
 
-app.mapGet('/', () => Results.json({ message: 'Hello from TSDK!' }));
+app.mapGet('/', () => Results.json({ message: 'Hello from TSNX!' }));
 app.mapGet('/health', () => Results.ok({ status: 'healthy' }));
 
 await app.run();

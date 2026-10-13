@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { TsWorkspace } from '@tsdk/core';
+import { TsWorkspace } from '@tsnx/core';
 import { ImportValidator } from '../validator/index.js';
 
 describe('Milestone M4: Reference Enforcement (AST-based Import Validator)', () => {
@@ -88,7 +88,7 @@ projects:
     }
   });
 
-  it('rejects cross-project relative import with TSDK2102', () => {
+  it('rejects cross-project relative import with TSNX2102', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-val-rel-test-'));
 
     try {
@@ -154,7 +154,7 @@ projects:
       const validation = ImportValidator.validateWorkspace(workspace);
 
       assert.equal(validation.valid, false);
-      const diag2102 = validation.diagnostics.find((d) => d.code === 'TSDK2102');
+      const diag2102 = validation.diagnostics.find((d) => d.code === 'TSNX2102');
       assert.ok(diag2102);
       assert.equal(diag2102.sourceProject, 'Acme.Api');
     } finally {
@@ -162,7 +162,7 @@ projects:
     }
   });
 
-  it('rejects undeclared project reference with TSDK2101 and fix suggestion', () => {
+  it('rejects undeclared project reference with TSNX2101 and fix suggestion', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-val-und-test-'));
 
     try {
@@ -227,11 +227,11 @@ projects:
       const validation = ImportValidator.validateWorkspace(workspace);
 
       assert.equal(validation.valid, false);
-      const diag2101 = validation.diagnostics.find((d) => d.code === 'TSDK2101');
+      const diag2101 = validation.diagnostics.find((d) => d.code === 'TSNX2101');
       assert.ok(diag2101);
       assert.equal(diag2101.sourceProject, 'Acme.Api');
       assert.equal(diag2101.targetProject, 'Acme.Infra');
-      assert.equal(diag2101.fixSuggestion, 'tsdk ref add Acme.Api Acme.Infra');
+      assert.equal(diag2101.fixSuggestion, 'tsnx ref add Acme.Api Acme.Infra');
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

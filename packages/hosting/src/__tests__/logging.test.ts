@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { LoggerFactory, LogLevel } from '../logging/index.js';
 
-describe('@tsdk/hosting: Logging Abstraction', () => {
+describe('@tsnx/hosting: Logging Abstraction', () => {
   it('filters log messages based on minimum log level', () => {
     const factory = new LoggerFactory(LogLevel.Warning);
     const logger = factory.createLogger('TestCategory');

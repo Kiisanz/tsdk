@@ -1,4 +1,4 @@
-import { ProjectGraph } from '@tsdk/core';
+import { ProjectGraph } from '@tsnx/core';
 import { TsdkContext } from '../discovery.js';
 
 export function runGraph(context: TsdkContext): number {

@@ -1,8 +1,8 @@
 {
-  "name": "tsdk",
+  "name": "tsnx",
   "version": "0.1.0-rc.1",
   "private": true,
-  "description": "TSDK - TypeScript Development Kit (Engine & Project System inspired by .NET SDK)",
+  "description": "TSNX - TypeScript Application Framework & Project System",
   "type": "module",
   "packageManager": "pnpm@12.11.2",
   "scripts": {

@@ -9,7 +9,7 @@ import { findContext } from '../discovery.js';
 
 const CLI_BIN = fileURLToPath(new URL('../index.js', import.meta.url));
 
-describe('@tsdk/cli Commands & Context Discovery', () => {
+describe('@tsnx/cli Commands & Context Discovery', () => {
   it('discovers workspace from root and from nested directories', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-cli-disc-'));
 
@@ -64,11 +64,11 @@ projects:
     }
   });
 
-  it('runs tsdk --version and tsdk --help', () => {
+  it('runs tsnx --version and tsnx --help', () => {
     const helpOutput = execFileSync(process.execPath, [CLI_BIN, '--help'], {
       encoding: 'utf-8',
     });
-    assert.ok(helpOutput.includes('TSDK - TypeScript Development Kit CLI'));
+    assert.ok(helpOutput.includes('TSNX - TypeScript Application Framework CLI'));
     assert.ok(helpOutput.includes('build'));
     assert.ok(helpOutput.includes('restore'));
     assert.ok(helpOutput.includes('graph'));
@@ -76,10 +76,10 @@ projects:
     const versionOutput = execFileSync(process.execPath, [CLI_BIN, '--version'], {
       encoding: 'utf-8',
     });
-    assert.ok(versionOutput.includes('tsdk v0.1.0-rc.1'));
+    assert.ok(versionOutput.includes('tsnx v0.1.0-rc.1'));
   });
 
-  it('runs tsdk project list, graph, restore, build, and clean in workspace', () => {
+  it('runs tsnx project list, graph, restore, build, and clean in workspace', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-cli-e2e-'));
 
     try {
@@ -212,7 +212,7 @@ projects:
         encoding: 'utf-8',
       });
       // Domain and Api have no test files -> explicit warning shown, not silent success
-      assert.ok(testOutput.includes('[TSDK Warning] No test files found'));
+      assert.ok(testOutput.includes('[TSNX Warning] No test files found'));
 
       // 6. Link node_modules/@types to workspace and add actual test file in Acme.Domain
       const monorepoRoot = path.resolve(fileURLToPath(new URL('../../../..', import.meta.url)));

@@ -5,11 +5,11 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TsProject, TsWorkspace } from '@tsdk/core';
+import { TsProject, TsWorkspace } from '@tsnx/core';
 
 const CLI_BIN = fileURLToPath(new URL('../index.js', import.meta.url));
 
-describe('@tsdk/cli Scaffolding & Execution', () => {
+describe('@tsnx/cli Scaffolding & Execution', () => {
   it('scaffolds console project and executes it with tsdk run', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-scaffold-console-'));
 
@@ -242,12 +242,12 @@ console.log('Calculation:', add(10, 25));
       assert.equal(proj.name, 'MyApi');
       assert.equal(proj.type, 'webapi');
 
-      // Link node_modules so compiled code can import @tsdk/web and @types/node
+      // Link node_modules so compiled code can import @tsnx/web and @types/node
       const monorepoRoot = path.resolve(fileURLToPath(new URL('../../../..', import.meta.url)));
       const webPkgDir = path.join(monorepoRoot, 'packages', 'web');
       const hostingPkgDir = path.join(monorepoRoot, 'packages', 'hosting');
 
-      const apiModules = path.join(apiDir, 'node_modules', '@tsdk');
+      const apiModules = path.join(apiDir, 'node_modules', '@tsnx');
       fs.mkdirSync(apiModules, { recursive: true });
       fs.symlinkSync(webPkgDir, path.join(apiModules, 'web'), 'junction');
       fs.symlinkSync(hostingPkgDir, path.join(apiModules, 'hosting'), 'junction');

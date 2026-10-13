@@ -1,42 +1,42 @@
-# TSDK (TypeScript Development Kit)
+# TSNX
 
 A self-contained, .NET SDK-inspired project system, application framework, and CLI for TypeScript and Node.js.
 
-TSDK simplifies building scalable, multi-project TypeScript solutions by introducing declarative project manifests (`.tsproj`, `.tswork`), strict project reference boundaries, unified diagnostics, unified application hosting (`@tsdk/hosting`), high-performance HTTP Web API foundations (`@tsdk/web`), and developer-centric CLI tooling (`@tsdk/cli`).
+TSNX simplifies building scalable, multi-project TypeScript solutions by introducing declarative project manifests (`.tsproj`, `.tswork`), strict project reference boundaries, unified diagnostics, unified application hosting (`@tsnx/hosting`), high-performance HTTP Web API foundations (`@tsnx/web`), and developer-centric CLI tooling (`@tsnx/cli`).
 
 ## Packages
 
 | Package | Version | Description |
 |---|---|---|
-| [`@tsdk/core`](./packages/core) | `0.1.0-rc.1` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
-| [`@tsdk/hosting`](./packages/hosting) | `0.1.0-rc.1` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
-| [`@tsdk/build`](./packages/build) | `0.1.0-rc.1` | Compiler configuration generator, orchestrator, and package synchronization |
-| [`@tsdk/web`](./packages/web) | `0.1.0-rc.1` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
-| [`@tsdk/cli`](./apps/cli) | `0.1.0-rc.1` | Unified CLI (`tsdk create`, `build`, `run`, `test`, `watch`, `restore`) |
+| [`@tsnx/core`](./packages/core) | `0.1.0-rc.1` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
+| [`@tsnx/hosting`](./packages/hosting) | `0.1.0-rc.1` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
+| [`@tsnx/build`](./packages/build) | `0.1.0-rc.1` | Compiler configuration generator, orchestrator, and package synchronization |
+| [`@tsnx/web`](./packages/web) | `0.1.0-rc.1` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
+| [`@tsnx/cli`](./apps/cli) | `0.1.0-rc.1` | Unified CLI (`tsnx create`, `build`, `run`, `test`, `watch`, `restore`) |
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-npm install -g @tsdk/cli
+npm install -g @tsnx/cli
 # Or run with pnpm
-pnpm add -g @tsdk/cli
+pnpm add -g @tsnx/cli
 ```
 
 ### Create a Web API
 
 ```bash
-tsdk create webapi MyApi
+tsnx create webapi MyApi
 cd MyApi
-tsdk run
+tsnx run
 ```
 
 ### Create a Console Application or Library
 
 ```bash
-tsdk create console MyTool
-tsdk create library MyLib
+tsnx create console MyTool
+tsnx create library MyLib
 ```
 
 ## License

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { VERSION as CORE_VERSION } from '@tsdk/core';
+import { VERSION as CORE_VERSION } from '@tsnx/core';
 import { runBuild } from './commands/build.js';
 import { runClean } from './commands/clean.js';
 import { runCreate } from './commands/create.js';
@@ -15,10 +15,10 @@ import { findContext } from './discovery.js';
 
 function printHelp(): void {
   console.log(`
-TSDK - TypeScript Development Kit CLI v${CORE_VERSION}
+TSNX - TypeScript Application Framework CLI v${CORE_VERSION}
 
 Usage:
-  tsdk <command> [options]
+  tsnx <command> [options]
 
 Commands:
   create <template> <name>   Create a new project (templates: console, library, webapi)
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   }
 
   if (rawArgs.includes('--version')) {
-    console.log(`tsdk v${CORE_VERSION}`);
+    console.log(`tsnx v${CORE_VERSION}`);
     process.exit(0);
   }
 
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
 
     case 'run': {
       if (!context) {
-        console.error('[TSDK Error] No TSDK project (*.tsproj) found in current directory or parent directories.');
+        console.error('[TSNX Error] No project (*.tsproj) found in current directory or parent directories.');
         process.exit(1);
       }
       // Pass remaining args after 'run'
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
       if (subCommand === 'list' || subCommand === 'ls' || !subCommand) {
         exitCode = runProjectList(context);
       } else {
-        console.error(`[TSDK Error] Unknown sub-command "project ${subCommand}". Did you mean "tsdk project list"?`);
+        console.error(`[TSNX Error] Unknown sub-command "project ${subCommand}". Did you mean "tsnx project list"?`);
         exitCode = 1;
       }
       break;
@@ -156,7 +156,7 @@ async function main(): Promise<void> {
       break;
 
     default:
-      console.error(`[TSDK Error] Unknown command: "${command}". Run "tsdk --help" for available commands.`);
+      console.error(`[TSNX Error] Unknown command: "${command}". Run "tsnx --help" for available commands.`);
       exitCode = 1;
   }
 
@@ -165,14 +165,14 @@ async function main(): Promise<void> {
 
 function reportMissingContext(forceWorkspace: boolean): never {
   if (forceWorkspace) {
-    console.error('[TSDK Error] No TSDK workspace (*.tswork) found in current directory or parent directories.');
+    console.error('[TSNX Error] No workspace (*.tswork) found in current directory or parent directories.');
   } else {
-    console.error('[TSDK Error] No TSDK project (*.tsproj) or workspace (*.tswork) found in current directory or parent directories.');
+    console.error('[TSNX Error] No project (*.tsproj) or workspace (*.tswork) found in current directory or parent directories.');
   }
   process.exit(1);
 }
 
 main().catch((err) => {
-  console.error('[TSDK Fatal Error]:', err);
+  console.error('[TSNX Fatal Error]:', err);
   process.exit(1);
 });

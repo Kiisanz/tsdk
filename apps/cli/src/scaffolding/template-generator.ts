@@ -160,7 +160,7 @@ spec:
         type: 'module',
         main: './dist/main.js',
         dependencies: {
-          '@tsdk/web': '0.1.0-rc.1',
+          '@tsnx/web': '0.1.0-rc.1',
         },
       };
       fs.writeFileSync(
@@ -171,7 +171,7 @@ spec:
 
       // 3. src/main.ts
       const mainTsContent = `import process from 'node:process';
-import { WebApplication, Results } from '@tsdk/web';
+import { WebApplication, Results } from '@tsnx/web';
 
 const builder = WebApplication.createBuilder(process.argv.slice(2));
 

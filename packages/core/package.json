@@ -1,7 +1,7 @@
 {
-  "name": "@tsdk/core",
+  "name": "@tsnx/core",
   "version": "0.1.0-rc.1",
-  "description": "TSDK Core - Project, Workspace, and Project Graph engine",
+  "description": "TSNX Core - Project, Workspace, and Project Graph engine",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -29,10 +29,10 @@ function httpGet(url: string): Promise<{ statusCode: number; headers: http.Incom
   });
 }
 
-describe('TSDK Packaging & Isolated Consumer Verification', () => {
+describe('TSNX Packaging & Isolated Consumer Verification', () => {
   it('creates tarballs with strict package integrity and validates complete consumer workflow in isolated environment', async () => {
     // 1. Create tarballs for all 5 packages in a dedicated staging directory
-    const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-pack-staging-'));
+    const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-pack-staging-'));
     const packagesToPack = [
       { name: 'core', pkgDir: path.join(monorepoRoot, 'packages', 'core') },
       { name: 'hosting', pkgDir: path.join(monorepoRoot, 'packages', 'hosting') },
@@ -54,12 +54,12 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(packOutput.includes(`@tsdk/${name}@0.1.0-rc.1`), `Failed packing @tsdk/${name}: ${packOutput}`);
+        assert.ok(packOutput.includes(`@tsnx/${name}@0.1.0-rc.1`), `Failed packing @tsnx/${name}: ${packOutput}`);
         
         // Find produced .tgz
         const files = fs.readdirSync(stageDir);
-        const tgzName = files.find((f) => f.startsWith(`tsdk-${name}`) && f.endsWith('.tgz'));
-        assert.ok(tgzName, `Could not find tarball for @tsdk/${name} in ${stageDir}`);
+        const tgzName = files.find((f) => f.startsWith(`tsnx-${name}`) && f.endsWith('.tgz'));
+        assert.ok(tgzName, `Could not find tarball for @tsnx/${name} in ${stageDir}`);
         tarballPaths[name] = path.join(stageDir, tgzName);
       }
 
@@ -85,7 +85,7 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
 
       // 3. Isolated Consumer Verification
       // Create isolated consumer directory completely outside monorepo
-      const consumerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-isolated-consumer-'));
+      const consumerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-isolated-consumer-'));
 
       try {
         // Initialize minimal consumer project
@@ -112,11 +112,11 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
           stdio: 'pipe',
         });
 
-        const consumerTsdkBin = path.join(consumerDir, 'node_modules', '.bin', 'tsdk');
-        assert.ok(fs.existsSync(consumerTsdkBin), `tsdk bin not found at ${consumerTsdkBin}`);
+        const consumerTsnxBin = path.join(consumerDir, 'node_modules', '.bin', 'tsnx');
+        assert.ok(fs.existsSync(consumerTsnxBin), `tsnx bin not found at ${consumerTsnxBin}`);
 
         // A. Verify CLI version
-        const versionOutput = execFileSync(consumerTsdkBin, ['--version'], {
+        const versionOutput = execFileSync(consumerTsnxBin, ['--version'], {
           cwd: consumerDir,
           encoding: 'utf-8',
         });
@@ -124,7 +124,7 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
 
         // B. Consumer: Console Application (create -> build -> run)
         const createConsoleOutput = execFileSync(
-          consumerTsdkBin,
+          consumerTsnxBin,
           ['create', 'console', 'MyConsole'],
           {
             cwd: consumerDir,
@@ -138,7 +138,7 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
         assert.ok(fs.existsSync(path.join(consoleDir, 'src', 'main.ts')));
 
         // Build console project
-        const buildConsoleOutput = execFileSync(consumerTsdkBin, ['build'], {
+        const buildConsoleOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: consoleDir,
           encoding: 'utf-8',
         });
@@ -146,7 +146,7 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
         assert.ok(fs.existsSync(path.join(consoleDir, 'dist', 'main.js')));
 
         // Run console project
-        const runConsoleOutput = execFileSync(consumerTsdkBin, ['run'], {
+        const runConsoleOutput = execFileSync(consumerTsnxBin, ['run'], {
           cwd: consoleDir,
           encoding: 'utf-8',
         });
@@ -154,7 +154,7 @@ describe('TSDK Packaging & Isolated Consumer Verification', () => {
 
         // C. Consumer: Library Project (create -> build -> test)
         const createLibOutput = execFileSync(
-          consumerTsdkBin,
+          consumerTsnxBin,
           ['create', 'library', 'MyLib'],
           {
             cwd: consumerDir,
@@ -181,7 +181,7 @@ it('adds two numbers correctly', () => {
         );
 
         // Build library
-        const buildLibOutput = execFileSync(consumerTsdkBin, ['build'], {
+        const buildLibOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: libDir,
           encoding: 'utf-8',
         });
@@ -189,8 +189,8 @@ it('adds two numbers correctly', () => {
         assert.ok(fs.existsSync(path.join(libDir, 'dist', 'index.js')));
         assert.ok(fs.existsSync(path.join(libDir, 'dist', 'index.d.ts')));
 
-        // Run tests with tsdk test
-        const testLibOutput = execFileSync(consumerTsdkBin, ['test'], {
+        // Run tests with tsnx test
+        const testLibOutput = execFileSync(consumerTsnxBin, ['test'], {
           cwd: libDir,
           encoding: 'utf-8',
         });
@@ -199,7 +199,7 @@ it('adds two numbers correctly', () => {
 
         // D. Consumer: Web API Project (create -> install deps from tarball -> build -> run -> HTTP query -> stop)
         const createApiOutput = execFileSync(
-          consumerTsdkBin,
+          consumerTsnxBin,
           ['create', 'webapi', 'MyApi'],
           {
             cwd: consumerDir,
@@ -209,7 +209,7 @@ it('adds two numbers correctly', () => {
         assert.ok(createApiOutput.includes('Created webapi project "MyApi"'));
 
         const apiDir = path.join(consumerDir, 'MyApi');
-        // Install @tsdk/web and @tsdk/hosting in MyApi using the tarballs
+        // Install @tsnx/web and @tsnx/hosting in MyApi using the tarballs
         execFileSync(
           'npm',
           ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting],
@@ -221,7 +221,7 @@ it('adds two numbers correctly', () => {
         );
 
         // Build Web API
-        const buildApiOutput = execFileSync(consumerTsdkBin, ['build'], {
+        const buildApiOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: apiDir,
           encoding: 'utf-8',
         });
@@ -230,7 +230,7 @@ it('adds two numbers correctly', () => {
 
         // Run Web API and query HTTP endpoints
         const testPort = 42899;
-        const apiChild = spawn(consumerTsdkBin, ['run'], {
+        const apiChild = spawn(consumerTsnxBin, ['run'], {
           cwd: apiDir,
           env: {
             ...process.env,

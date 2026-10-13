@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectGraph, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsWorkspace } from '@tsnx/core';
 import { ConfigGenerator } from '../generator/index.js';
 
 describe('Milestone M1: Compiler Config Generator', () => {
@@ -68,7 +68,7 @@ defaults:
       ConfigGenerator.writeGeneratedConfigsSync(result);
 
       // Verify directory structure
-      assert.equal(result.generatedDir, path.join(tmpDir, '.tsdk', 'generated'));
+      assert.equal(result.generatedDir, path.join(tmpDir, '.tsnx', 'generated'));
       assert.ok(fs.existsSync(path.join(result.generatedDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(result.generatedDir, 'Acme.Api.tsconfig.json')));
       assert.ok(fs.existsSync(path.join(result.generatedDir, 'Acme.Domain.tsconfig.json')));

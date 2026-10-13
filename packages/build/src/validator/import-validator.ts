@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { TsProject, TsWorkspace } from '@tsdk/core';
+import { TsProject, TsWorkspace } from '@tsnx/core';
 import ts from 'typescript';
 import { ImportDiagnostic, ValidationResult } from './types.js';
 
@@ -103,8 +103,8 @@ export class ImportValidator {
           if (!resolvedRealDir.startsWith(projectRealDir)) {
             // Cross-project relative import!
             diagnostics.push({
-              code: 'TSDK2102',
-              message: `TSDK2102: Cross-project relative import not allowed. Use package import instead.`,
+              code: 'TSNX2102',
+              message: `TSNX2102: Cross-project relative import not allowed. Use package import instead.`,
               filePath,
               line: item.line,
               column: item.column,
@@ -132,15 +132,15 @@ export class ImportValidator {
 
           if (!isDirectRef) {
             diagnostics.push({
-              code: 'TSDK2101',
-              message: `TSDK2101: Undeclared project reference\nProject: ${project.name}\nImport:  ${specifier}\nTarget:  ${targetWorkspaceProject.name}\nFix: tsdk ref add ${project.name} ${targetWorkspaceProject.name}`,
+              code: 'TSNX2101',
+              message: `TSNX2101: Undeclared project reference\nProject: ${project.name}\nImport:  ${specifier}\nTarget:  ${targetWorkspaceProject.name}\nFix: tsnx ref add ${project.name} ${targetWorkspaceProject.name}`,
               filePath,
               line: item.line,
               column: item.column,
               sourceProject: project.name,
               importSpecifier: specifier,
               targetProject: targetWorkspaceProject.name,
-              fixSuggestion: `tsdk ref add ${project.name} ${targetWorkspaceProject.name}`,
+              fixSuggestion: `tsnx ref add ${project.name} ${targetWorkspaceProject.name}`,
             });
           }
         } else if (!specifier.startsWith('node:')) {
@@ -149,8 +149,8 @@ export class ImportValidator {
             // Node built-in module check
             if (!this.isNodeBuiltin(packageName)) {
               diagnostics.push({
-                code: 'TSDK2103',
-                message: `TSDK2103: Transitive or undeclared npm dependency "${packageName}" is imported but not declared in ${project.name}'s package.json`,
+                code: 'TSNX2103',
+                message: `TSNX2103: Transitive or undeclared npm dependency "${packageName}" is imported but not declared in ${project.name}'s package.json`,
                 filePath,
                 line: item.line,
                 column: item.column,

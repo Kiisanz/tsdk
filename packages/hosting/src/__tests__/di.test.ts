@@ -8,7 +8,7 @@ import {
   ServiceNotFoundError,
 } from '../di/index.js';
 
-describe('@tsdk/hosting: Dependency Injection', () => {
+describe('@tsnx/hosting: Dependency Injection', () => {
   it('resolves singleton, transient, and scoped lifetimes correctly', async () => {
     const services = new ServiceCollection();
 

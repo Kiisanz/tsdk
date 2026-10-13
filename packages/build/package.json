@@ -1,7 +1,7 @@
 {
-  "name": "@tsdk/build",
+  "name": "@tsnx/build",
   "version": "0.1.0-rc.1",
-  "description": "TSDK Build - Compiler configuration generator, build orchestrator, package integration, and reference enforcement",
+  "description": "TSNX Build - Compiler configuration generator, build orchestrator, package integration, and reference enforcement",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,7 +31,7 @@
     "test": "node --test dist/__tests__/**/*.test.js"
   },
   "dependencies": {
-    "@tsdk/core": "workspace:*",
+    "@tsnx/core": "workspace:*",
     "@types/node": "^22.13.9",
     "typescript": "^5.8.2"
   }

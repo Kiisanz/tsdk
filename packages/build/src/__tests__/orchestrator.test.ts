@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ProjectGraph, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsWorkspace } from '@tsnx/core';
 import { BuildError, BuildOrchestrator } from '../orchestrator/index.js';
 
 describe('Milestone M2: Build Orchestrator', () => {

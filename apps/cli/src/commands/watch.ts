@@ -1,8 +1,8 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BuildService } from '@tsdk/build';
-import { TsProject, TsWorkspace } from '@tsdk/core';
+import { BuildService } from '@tsnx/build';
+import { TsProject, TsWorkspace } from '@tsnx/core';
 import { findContext, TsdkContext } from '../discovery.js';
 
 export interface WatchOptions {
@@ -32,7 +32,7 @@ export class WatchSupervisor {
       this.context.kind === 'workspace'
         ? `workspace "${this.context.workspace.name}"`
         : `project "${this.context.project.name}"`;
-    console.log(`[TSDK Watch] Initializing watcher for ${targetName}...`);
+    console.log(`[TSNX Watch] Initializing watcher for ${targetName}...`);
 
     // 1. Initial build & run
     await this.triggerBuild();
@@ -43,7 +43,7 @@ export class WatchSupervisor {
     // 3. Keep process open
     return new Promise<void>((resolve) => {
       const shutdown = async () => {
-        console.log(`\n[TSDK Watch] Stopping watchers and shutting down...`);
+        console.log(`\n[TSNX Watch] Stopping watchers and shutting down...`);
         this.closeWatchers();
         await this.stopChildProcess();
         resolve();
@@ -175,7 +175,7 @@ export class WatchSupervisor {
         }
       }
 
-      console.log(`\n[TSDK Watch] Change detected. Compiling...`);
+      console.log(`\n[TSNX Watch] Change detected. Compiling...`);
 
       // 2. Perform incremental compilation using existing BuildService
       const isWorkspace = this.context.kind === 'workspace' || this.options.forceWorkspace;
@@ -190,7 +190,7 @@ export class WatchSupervisor {
         await BuildService.buildProject(this.context.project, {}, this.context.parentWorkspace);
       }
 
-      console.log(`✔ [TSDK Watch] Compilation succeeded.`);
+      console.log(`✔ [TSNX Watch] Compilation succeeded.`);
 
       // 3. Restart application if requested (and this is an executable project)
       if (this.options.runApp && this.context.kind === 'project') {
@@ -198,13 +198,13 @@ export class WatchSupervisor {
         await this.restartChildProcess(generation);
       }
     } catch (err: unknown) {
-      console.error(`\n✖ [TSDK Watch] Compilation failed:`);
+      console.error(`\n✖ [TSNX Watch] Compilation failed:`);
       console.error(err instanceof Error ? err.message : err);
 
       // Stop previous child process on build failure so developer doesn't run stale binary
       this.buildGeneration++;
       await this.stopChildProcess();
-      console.log(`[TSDK Watch] Waiting for fixes before restarting...`);
+      console.log(`[TSNX Watch] Waiting for fixes before restarting...`);
     } finally {
       this.isBuilding = false;
 
@@ -279,7 +279,7 @@ export class WatchSupervisor {
       return;
     }
 
-    console.log(`[TSDK Watch] Starting application...`);
+    console.log(`[TSNX Watch] Starting application...`);
 
     const child = spawn(process.execPath, [entryJsPath, ...(this.options.appArgs ?? [])], {
       cwd: project.directory,
@@ -290,7 +290,7 @@ export class WatchSupervisor {
     this.childProcess = child;
 
     child.on('error', (err) => {
-      console.error(`[TSDK Watch] Error executing process:`, err);
+      console.error(`[TSNX Watch] Error executing process:`, err);
     });
   }
 }

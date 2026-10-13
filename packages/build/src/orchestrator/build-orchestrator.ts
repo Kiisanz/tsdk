@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { ProjectGraph, TsProject, TsWorkspace } from '@tsdk/core';
+import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
 import { ConfigGenerator } from '../generator/config-generator.js';
 import { BuildOptions, BuildResult } from './types.js';
 
