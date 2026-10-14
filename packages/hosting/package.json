@@ -28,7 +28,7 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --test dist/__tests__"
+    "test": "node ../../scripts/test-runner.js"
   },
   "dependencies": {
     "@types/node": "^22.13.9"
