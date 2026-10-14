@@ -1,1 +1,1 @@
-export type { IHost, HostOptions } from '@tsnx/hosting-abstractions';
+export type { IHost, HostOptions, HostApplicationBuilderSettings } from '@tsnx/hosting-abstractions';

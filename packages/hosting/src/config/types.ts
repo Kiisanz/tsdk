@@ -1,1 +1,1 @@
-export type { IConfigurationProvider, IConfiguration } from '@tsnx/hosting-abstractions';
+export type { IConfigurationProvider, IConfiguration, IConfigurationSection } from '@tsnx/hosting-abstractions';

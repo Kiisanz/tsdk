@@ -1,4 +1,5 @@
 import type { HostedService } from '../hosted-services/types.js';
+import type { IOptionsBuilder } from '../options/types.js';
 
 export type ServiceLifetime = 'singleton' | 'scoped' | 'transient';
 
@@ -130,4 +131,7 @@ export interface IServiceCollection extends Iterable<ServiceDescriptor> {
   find(token: ServiceIdentifier): ServiceDescriptor | undefined;
   findAll(token: ServiceIdentifier): ServiceDescriptor[];
   buildServiceProvider(options?: ServiceProviderOptions): IServiceProviderRoot;
+
+  // Options Pattern
+  configure<T>(token: InjectionToken<T> | ServiceToken<T> | string): IOptionsBuilder<T>;
 }

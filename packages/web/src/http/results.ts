@@ -5,7 +5,7 @@ export interface HttpResult {
   executeAsync(ctx: HttpContext): Promise<void>;
 }
 
-export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult>;
+export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult> | Promise<void> | void;
 
 export class JsonResult implements HttpResult {
   constructor(
@@ -129,5 +129,16 @@ export class Results {
 
   public static problem(title: string, statusCode: number, detail?: string, extensions?: Record<string, any>): HttpResult {
     return new ProblemResult(title, statusCode, detail, extensions);
+  }
+
+  public static validationProblem(
+    errors: Record<string, string[]>,
+    title = 'One or more validation errors occurred.',
+    statusCode = 400
+  ): HttpResult {
+    return new ProblemResult(title, statusCode, undefined, {
+      type: 'https://tsnx.dev/problems/validation',
+      errors,
+    });
   }
 }
