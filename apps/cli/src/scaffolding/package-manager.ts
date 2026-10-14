@@ -131,7 +131,11 @@ export class PackageManagerDetector {
 
 export function installDependencies(pm: PackageManager, installDir: string): void {
   const isWindows = process.platform === 'win32';
-  execFileSync(pm, ['install'], {
+  const args = ['install'];
+  if (pm === 'pnpm') {
+    args.push('--no-frozen-lockfile');
+  }
+  execFileSync(pm, args, {
     cwd: installDir,
     stdio: 'pipe',
     shell: isWindows,
