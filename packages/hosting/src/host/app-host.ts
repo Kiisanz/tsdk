@@ -1,5 +1,5 @@
 import { IConfiguration } from '../config/types.js';
-import { IServiceProvider } from '../di/types.js';
+import { IServiceProviderRoot } from '../di/types.js';
 import { HostedService } from '../hosted-services/types.js';
 import { HostLifecycleCoordinator } from '../lifecycle/host-lifetime.js';
 import { HostApplicationBuilder } from './host-application-builder.js';
@@ -20,7 +20,7 @@ export class AppHost implements IHost {
   private fatalExecutionError?: unknown;
 
   constructor(
-    public readonly services: IServiceProvider,
+    public readonly services: IServiceProviderRoot,
     public readonly config: IConfiguration,
     private readonly hostedServices: readonly HostedService[],
     private readonly coordinator: HostLifecycleCoordinator,
