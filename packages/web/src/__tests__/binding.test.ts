@@ -503,5 +503,61 @@ describe('HTTP Request Binding - WebApplication Integration & RFC 9457 Problem D
     await app.stop();
     app = undefined;
   });
+
+  it('M-03: getBodyStream enforces maxBodySizeBytes on chunked/streamed uploads and returns 413', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.configureServer({ maxBodySizeBytes: 64 });
+    app = builder.build();
+
+    app.mapPost('/stream-upload', async (ctx) => {
+      let total = 0;
+      for await (const chunk of ctx.request.getBodyStream()) {
+        total += (chunk as Buffer).length;
+      }
+      return Results.ok({ bytesReceived: total });
+    });
+
+    app.mapPost('/raw-upload', async (ctx) => {
+      let total = 0;
+      for await (const chunk of ctx.request.raw) {
+        total += (chunk as Buffer).length;
+      }
+      return Results.ok({ bytesReceived: total });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    // 1. getBodyStream exceeds limit -> 413
+    const resOverLimit = await fetch(`http://127.0.0.1:${port}/stream-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: 'X'.repeat(512),
+    });
+    assert.equal(resOverLimit.status, 413);
+
+    // 2. getBodyStream within limit -> 200
+    const resWithinLimit = await fetch(`http://127.0.0.1:${port}/stream-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: 'X'.repeat(32),
+    });
+    assert.equal(resWithinLimit.status, 200);
+    const dataWithin = await resWithinLimit.json() as any;
+    assert.equal(dataWithin.bytesReceived, 32);
+
+    // 3. raw escape hatch -> unmetered 200
+    const resRaw = await fetch(`http://127.0.0.1:${port}/raw-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: 'X'.repeat(512),
+    });
+    assert.equal(resRaw.status, 200);
+    const dataRaw = await resRaw.json() as any;
+    assert.equal(dataRaw.bytesReceived, 512);
+
+    await app.stop();
+    app = undefined;
+  });
 });
 

@@ -659,4 +659,51 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     const json = await res.json() as any;
     assert.strictEqual(json.title, 'Clean Response');
   });
+
+  // --------------------------------------------------------------------------
+  // 17. M-02: Exception handler registered via factory is disposed with request scope
+  // --------------------------------------------------------------------------
+  it('17. M-02: Exception handler registered via factory is disposed with request scope', async () => {
+    let createdCount = 0;
+    let disposedCount = 0;
+
+    class DisposableFactoryHandler implements IExceptionHandler {
+      constructor() {
+        createdCount++;
+      }
+
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        ctx.response.writeProblem({
+          status: 500,
+          title: 'Handled by Factory',
+        });
+        return true;
+      }
+
+      dispose() {
+        disposedCount++;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(() => new DisposableFactoryHandler());
+    app = builder.build();
+
+    app.mapGet('/fail-1', () => {
+      throw new Error('Failure 1');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res1 = await fetch(`http://127.0.0.1:${port}/fail-1`);
+    assert.strictEqual(res1.status, 500);
+    assert.strictEqual(createdCount, 1);
+    assert.strictEqual(disposedCount, 1);
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/fail-1`);
+    assert.strictEqual(res2.status, 500);
+    assert.strictEqual(createdCount, 2);
+    assert.strictEqual(disposedCount, 2);
+  });
 });

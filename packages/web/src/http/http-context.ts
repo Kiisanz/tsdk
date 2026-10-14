@@ -1,5 +1,5 @@
 import { IncomingMessage, ServerResponse, validateHeaderName, validateHeaderValue } from 'node:http';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { IServiceProvider } from '@tsnx/hosting';
 import { bindBody } from '../binding/body-binder.js';
@@ -19,6 +19,7 @@ export class HttpRequest {
   public readonly signal: AbortSignal;
   private readonly req: IncomingMessage;
   private readonly maxBodySizeBytes: number;
+  private bodyStream?: Readable;
 
   constructor(req: IncomingMessage, signal: AbortSignal, maxBodySizeBytes = 1024 * 1024) {
     this.req = req;
@@ -39,8 +40,83 @@ export class HttpRequest {
     }
   }
 
+  /**
+   * Returns the underlying raw Node.js IncomingMessage.
+   *
+   * NOTE: This is an unmetered, low-level escape hatch that bypasses the server's
+   * `maxBodySizeBytes` limits. For bounded streaming (e.g. file uploads, chunked streaming),
+   * use `getBodyStream()` instead to prevent memory exhaustion and DoS attacks.
+   */
   public get raw(): IncomingMessage {
     return this.req;
+  }
+
+  /**
+   * Returns a bounded readable stream of the request body that strictly enforces `maxBodySizeBytes`.
+   * If the client streams more bytes than the configured limit (whether Content-Length or chunked),
+   * the stream emits a 413 `BadHttpRequestException` and destroys itself.
+   */
+  public getBodyStream(): Readable {
+    if (this.bodyStream) {
+      return this.bodyStream;
+    }
+
+    if (this.signal.aborted) {
+      throw this.signal.reason ?? new DOMException('Request aborted', 'AbortError');
+    }
+
+    const contentLengthHeader = this.headers['content-length'];
+    if (contentLengthHeader) {
+      const contentLength = parseInt(
+        Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader,
+        10
+      );
+      if (!Number.isNaN(contentLength) && contentLength > this.maxBodySizeBytes) {
+        throw new BadHttpRequestException(
+          `Payload Too Large: exceeded maximum size of ${this.maxBodySizeBytes} bytes`,
+          413
+        );
+      }
+    }
+
+    let bytesReceived = 0;
+    const maxBytes = this.maxBodySizeBytes;
+    const signal = this.signal;
+
+    const limiter = new Transform({
+      transform(chunk, encoding, callback) {
+        if (signal.aborted) {
+          callback(signal.reason ?? new DOMException('Request aborted', 'AbortError'));
+          return;
+        }
+
+        const len = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
+        bytesReceived += len;
+
+        if (bytesReceived > maxBytes) {
+          const err = new BadHttpRequestException(
+            `Payload Too Large: exceeded maximum size of ${maxBytes} bytes`,
+            413
+          );
+          callback(err);
+          return;
+        }
+
+        callback(null, chunk);
+      },
+    });
+
+    const onAbort = () => {
+      limiter.destroy(signal.reason ?? new DOMException('Request aborted', 'AbortError'));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+    limiter.once('close', () => {
+      signal.removeEventListener('abort', onAbort);
+    });
+
+    this.bodyStream = this.req.pipe(limiter);
+    return this.bodyStream;
   }
 
   public async readText(): Promise<string> {
@@ -48,22 +124,14 @@ export class HttpRequest {
       throw this.signal.reason ?? new DOMException('Request aborted', 'AbortError');
     }
 
+    const stream = this.getBodyStream();
     const chunks: Buffer[] = [];
-    let totalSize = 0;
 
-    for await (const chunk of this.req) {
+    for await (const chunk of stream) {
       if (this.signal.aborted) {
         throw this.signal.reason ?? new DOMException('Request aborted', 'AbortError');
       }
-      const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      totalSize += bufferChunk.length;
-      if (totalSize > this.maxBodySizeBytes) {
-        throw new BadHttpRequestException(
-          `Payload Too Large: exceeded maximum size of ${this.maxBodySizeBytes} bytes`,
-          413
-        );
-      }
-      chunks.push(bufferChunk);
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
 
     return Buffer.concat(chunks).toString('utf-8');

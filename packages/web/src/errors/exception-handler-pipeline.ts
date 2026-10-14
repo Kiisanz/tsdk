@@ -211,7 +211,11 @@ export class ExceptionHandlerPipeline {
           }
         }
         if (item.factory) {
-          return item.factory(ctx.services);
+          const instance = item.factory(ctx.services);
+          if (instance && (ctx.services as any).ownedInstances && !(ctx.services as any).ownedInstances.includes(instance)) {
+            (ctx.services as any).ownedInstances.push(instance);
+          }
+          return instance;
         }
       }
       if (item.implementationType) {

@@ -37,9 +37,12 @@ if (!(ServiceCollection.prototype as any).addExceptionHandler) {
         dependencies: dependencies.length > 0 ? dependencies : undefined,
       });
     } else {
+      const handlerToken = Symbol('tsnx.exception_handler.factory');
+      (this.addScoped(handlerToken as any) as any).toFactory(handler);
       this.add({
         token: EXCEPTION_HANDLER_TOKEN,
         lifetime: 'scoped',
+        implementationType: handlerToken as any,
         factory: handler as any,
       });
     }
