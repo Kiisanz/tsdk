@@ -1,6 +1,6 @@
 {
   "name": "tsnx",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "TSNX - TypeScript Application Framework & Project System",
   "type": "module",

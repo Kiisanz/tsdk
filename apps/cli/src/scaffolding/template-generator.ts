@@ -120,6 +120,9 @@ export class TemplateGenerator {
           name,
           type: 'library',
         },
+        dependencies: {
+          '@tsnx/hosting': '^0.3.0',
+        },
         devDependencies: {
           '@types/node': '^22.13.9',
         },
