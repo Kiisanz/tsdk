@@ -4,7 +4,7 @@ import { EnvironmentVariablesConfigurationProvider } from '../config/providers/e
 import { JsonConfigurationProvider } from '../config/providers/json-provider.js';
 import { MemoryConfigurationProvider } from '../config/providers/memory-provider.js';
 import { ServiceCollection } from '../di/service-collection.js';
-import { IServiceProvider } from '../di/types.js';
+import { IServiceProvider, ServiceProviderOptions } from '../di/types.js';
 import { HostedService, HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 import { HostApplicationLifetime, HostLifecycleCoordinator } from '../lifecycle/host-lifetime.js';
 import { LoggerFactory } from '../logging/console-logger.js';
@@ -17,6 +17,7 @@ export class HostApplicationBuilder {
   public readonly config = new Configuration();
   public readonly logging = new LoggerFactory(LogLevel.Information);
   public readonly options: HostOptions = {};
+  public readonly serviceProviderOptions: ServiceProviderOptions = {};
 
   constructor(args: string[] = []) {
     // 1. Setup Ordered Configuration Providers:
@@ -34,16 +35,27 @@ export class HostApplicationBuilder {
     this.services.addSingleton(LoggerFactory, () => this.logging);
   }
 
+  configureServiceProvider(options: Partial<ServiceProviderOptions>): this {
+    Object.assign(this.serviceProviderOptions, options);
+    return this;
+  }
+
   addHostedService<T extends HostedService>(factory: (sp: IServiceProvider) => T): this {
     this.services.addHostedService(factory);
     return this;
   }
 
-  build(): IHost {
+  build(options?: ServiceProviderOptions): IHost {
     const lifetime = new HostApplicationLifetime();
     this.services.addSingleton(HostApplicationLifetime, () => lifetime);
 
-    const serviceProvider = this.services.buildServiceProvider();
+    const spOptions: ServiceProviderOptions = {
+      ...this.options.serviceProviderOptions,
+      ...this.serviceProviderOptions,
+      ...options,
+    };
+
+    const serviceProvider = this.services.buildServiceProvider(spOptions);
 
     // Resolve hosted services from DI container
     const hostedServices: HostedService[] = [];

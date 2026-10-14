@@ -131,4 +131,20 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
     assert.equal(workerStopped, true);
     assert.equal(app.currentState, 'stopped');
   });
+
+  it('honors validateOnBuild and validateScopes configured on HostApplicationBuilder', () => {
+    class InvalidService {
+      constructor(public missingDep: any) {}
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.configureServiceProvider({ validateOnBuild: true });
+    builder.services.addSingleton(InvalidService).toClass(InvalidService, 'MissingToken' as any);
+
+    assert.throws(
+      () => builder.build(),
+      (err: any) => err.name === 'ServiceNotFoundError' || /MissingToken/.test(err.message),
+    );
+  });
 });

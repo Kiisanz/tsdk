@@ -288,4 +288,24 @@ describe('WebApplication Integration', () => {
     assert.strictEqual(res.status, 408);
     assert.strictEqual(await res.text(), 'Request Timeout');
   });
+
+  test('WebApplicationBuilder exposes serviceProviderOptions and respects validateOnBuild', async () => {
+    class IncompleteService {
+      constructor(public dep: any) {}
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    builder.configureServiceProvider({ validateOnBuild: true });
+    builder.services.addSingleton(IncompleteService).toClass(IncompleteService, 'UnavailableToken' as any);
+
+    app = builder.build();
+
+    await assert.rejects(
+      async () => {
+        await app!.start();
+      },
+      (err: any) => err.name === 'ServiceNotFoundError' || /UnavailableToken/.test(err.message),
+    );
+  });
 });

@@ -5,6 +5,8 @@ import {
   LoggerFactory,
   IHost,
   IServiceProviderRoot,
+  ServiceProviderOptions,
+  HostOptions,
 } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
@@ -33,12 +35,28 @@ export class WebApplicationBuilder {
     return this.builder.logging;
   }
 
+  public get hostOptions(): HostOptions {
+    return this.builder.options;
+  }
+
+  public get serviceProviderOptions(): ServiceProviderOptions {
+    return this.builder.serviceProviderOptions;
+  }
+
+  public configureServiceProvider(options: Partial<ServiceProviderOptions>): this {
+    this.builder.configureServiceProvider(options);
+    return this;
+  }
+
   public configureServer(options: HttpServerOptions): this {
     Object.assign(this.serverOptions, options);
     return this;
   }
 
-  public build(): WebApplication {
+  public build(options?: ServiceProviderOptions): WebApplication {
+    if (options) {
+      this.builder.configureServiceProvider(options);
+    }
     const router = new Router();
     const pipeline = new MiddlewarePipeline();
 
