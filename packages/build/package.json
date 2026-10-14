@@ -1,6 +1,6 @@
 {
   "name": "@tsnx/build",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "TSNX Build - Compiler configuration generator, build orchestrator, package integration, and reference enforcement",
   "license": "MIT",
   "type": "module",

@@ -54,7 +54,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(packOutput.includes(`@tsnx/${name}@0.2.1`), `Failed packing @tsnx/${name}: ${packOutput}`);
+        assert.ok(packOutput.includes(`@tsnx/${name}@0.2.2`), `Failed packing @tsnx/${name}: ${packOutput}`);
         
         // Find produced .tgz
         const files = fs.readdirSync(stageDir);
@@ -120,7 +120,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
           cwd: consumerDir,
           encoding: 'utf-8',
         });
-        assert.ok(versionOutput.includes('0.2.1'));
+        assert.ok(versionOutput.includes('0.2.2'));
 
         // B. Consumer: Console Application (create -> build -> run)
         const createConsoleOutput = execFileSync(

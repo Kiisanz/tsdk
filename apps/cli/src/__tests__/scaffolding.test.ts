@@ -333,5 +333,62 @@ console.log('Calculation:', add(10, 25));
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('supports -n and -o flags to scaffold into specific output directories in workspace', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-scaffold-flags-'));
+
+    try {
+      // 1. Init workspace
+      execFileSync(process.execPath, [CLI_BIN, 'workspace', 'init', 'MySolution'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      });
+
+      // 2. tsnx create webapi -n ArasHRMS.Host -o apps/ArasHRMS.Host --no-install
+      const createHostOutput = execFileSync(
+        process.execPath,
+        [CLI_BIN, 'create', 'webapi', '-n', 'ArasHRMS.Host', '-o', 'apps/ArasHRMS.Host', '--no-install'],
+        {
+          cwd: tmpDir,
+          encoding: 'utf-8',
+        },
+      );
+
+      assert.ok(createHostOutput.includes('Project scaffolded'));
+      assert.ok(createHostOutput.includes('Registered project in workspace "MySolution"'));
+      assert.ok(createHostOutput.includes('cd apps/ArasHRMS.Host'));
+
+      const hostDir = path.join(tmpDir, 'apps', 'ArasHRMS.Host');
+      assert.ok(fs.existsSync(path.join(hostDir, 'ArasHRMS.Host.tsproj')));
+      assert.ok(fs.existsSync(path.join(hostDir, 'src', 'main.ts')));
+
+      // 3. tsnx create library -n ArasHRMS.Core -o packages --no-install
+      const createCoreOutput = execFileSync(
+        process.execPath,
+        [CLI_BIN, 'create', 'library', '-n', 'ArasHRMS.Core', '-o', 'packages', '--no-install'],
+        {
+          cwd: tmpDir,
+          encoding: 'utf-8',
+        },
+      );
+
+      assert.ok(createCoreOutput.includes('Project scaffolded'));
+      assert.ok(createCoreOutput.includes('Registered project in workspace "MySolution"'));
+      assert.ok(createCoreOutput.includes('cd packages/ArasHRMS.Core'));
+
+      const coreDir = path.join(tmpDir, 'packages', 'ArasHRMS.Core');
+      assert.ok(fs.existsSync(path.join(coreDir, 'ArasHRMS.Core.tsproj')));
+      assert.ok(fs.existsSync(path.join(coreDir, 'src', 'index.ts')));
+
+      // 4. Verify workspace has both registered
+      const ws = TsWorkspace.loadSync(path.join(tmpDir, 'MySolution.tswork'));
+      assert.equal(ws.projects.length, 2);
+      assert.ok(ws.projects.some((p) => p.name === 'ArasHRMS.Host'));
+      assert.ok(ws.projects.some((p) => p.name === 'ArasHRMS.Core'));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
+
 

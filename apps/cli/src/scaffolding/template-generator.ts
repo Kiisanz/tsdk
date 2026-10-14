@@ -19,7 +19,17 @@ export function toKebabCase(str: string): string {
 export class TemplateGenerator {
   static createProject(options: CreateProjectOptions): string {
     const { name, template } = options;
-    const projectDir = path.resolve(options.targetDir ?? process.cwd(), name);
+    let projectDir: string;
+    if (options.targetDir) {
+      const resolvedTarget = path.resolve(process.cwd(), options.targetDir);
+      if (path.basename(resolvedTarget) === name) {
+        projectDir = resolvedTarget;
+      } else {
+        projectDir = path.join(resolvedTarget, name);
+      }
+    } else {
+      projectDir = path.resolve(process.cwd(), name);
+    }
 
     if (fs.existsSync(projectDir)) {
       const files = fs.readdirSync(projectDir);

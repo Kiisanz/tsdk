@@ -22,7 +22,7 @@ Usage:
 
 Commands:
   create <template> <name>   Create a new project (options: --no-install, --package-manager)
-  run [args...]              Build and run the project executable
+  run [options] [args...]    Build and run project (options: --project, -p, --no-build)
   watch [args...]            Watch for changes, rebuild incrementally, and restart app
   test                       Run project tests using dependency graph
   build                      Build project or workspace based on dependency graph
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
 
     case 'run': {
       if (!context) {
-        console.error('[TSNX Error] No project (*.tsproj) found in current directory or parent directories.');
+        console.error('[TSNX Error] No project (*.tsproj) or workspace (*.tswork) found in current directory or parent directories.');
         process.exit(1);
       }
       // Pass remaining args after 'run'
