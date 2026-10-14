@@ -217,23 +217,42 @@ export class HttpServerHostedService implements HostedService {
     const requestEntry: ActiveRequestEntry = { abortController, res };
     this.activeRequests.add(requestEntry);
 
+    // Create a new request-scoped DI container
+    const requestScope = this.rootServices!.createScope();
+
+    const ctx = new HttpContext(
+      req,
+      res,
+      requestScope.serviceProvider,
+      abortController.signal,
+      this.maxBodySizeBytes
+    );
+
     // Client Disconnect Detection:
     // In Node.js, res.on('close') fires when underlying socket closes.
-    // If !res.writableFinished && !res.writableEnded, connection closed prematurely before response completion.
+    // If !res.writableFinished, connection closed prematurely before response completion.
     // Normal response completion (writableFinished === true) MUST NOT abort the signal.
-    res.on('close', () => {
-      if (!res.writableFinished && !res.writableEnded) {
+    const onTsnxClose = () => {
+      if (!res.writableFinished) {
         if (!abortController.signal.aborted) {
           abortController.abort(new DOMException('Client disconnected', 'AbortError'));
         }
       }
-    });
+      ctx.response.fireCompleted();
+    };
+
+    const onTsnxFinish = () => {
+      ctx.response.fireCompleted();
+    };
+
+    res.on('close', onTsnxClose);
+    res.on('finish', onTsnxFinish);
 
     // Request Execution Timeout (handler duration protection)
     let timeoutTimer: NodeJS.Timeout | undefined;
     if (this.requestExecutionTimeoutMs > 0) {
       timeoutTimer = setTimeout(() => {
-        if (!res.writableFinished && !res.writableEnded) {
+        if (!res.writableFinished) {
           if (this.logger) {
             this.logger.warn(`Request execution timeout reached (${this.requestExecutionTimeoutMs}ms): ${req.method} ${req.url}`);
           }
@@ -251,24 +270,23 @@ export class HttpServerHostedService implements HostedService {
           } else {
             res.destroy(timeoutReason);
           }
+          ctx.response.fireCompleted();
         }
       }, this.requestExecutionTimeoutMs);
     }
 
-    // Create a new request-scoped DI container
-    const requestScope = this.rootServices!.createScope();
-
-    const ctx = new HttpContext(
-      req,
-      res,
-      requestScope.serviceProvider,
-      abortController.signal,
-      this.maxBodySizeBytes
-    );
-
     try {
       await this.handler(ctx);
     } catch (err: any) {
+      if (res.writableFinished) {
+        return;
+      }
+      if (res.headersSent) {
+        if (!res.writableEnded) {
+          res.destroy(err);
+        }
+        return;
+      }
       // Check if client disconnected - suppress noisy 500
       if (abortController.signal.aborted && abortController.signal.reason?.name === 'AbortError') {
         if (this.logger) {
@@ -282,18 +300,18 @@ export class HttpServerHostedService implements HostedService {
         if (this.logger) {
           this.logger.error(`Unhandled error during request processing: ${err?.stack || err?.message || err}`);
         }
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-          res.end('Internal Server Error');
-        } else if (!res.writableEnded) {
-          res.destroy(err);
-        }
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('Internal Server Error');
       }
     } finally {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
+        timeoutTimer = undefined;
       }
+
+      res.removeListener('close', onTsnxClose);
+      res.removeListener('finish', onTsnxFinish);
 
       // 1. Run onCompleted callbacks (scoped DI is still available during completion)
       try {
@@ -310,7 +328,7 @@ export class HttpServerHostedService implements HostedService {
         this.drainResolver();
       }
 
-      // 3. Clean up scoped DI services deterministically after onCompleted has finished
+      // 3. Clean up scoped DI services deterministically AFTER handler has finished
       try {
         await requestScope.dispose();
       } catch (scopeErr) {

@@ -180,13 +180,17 @@ export class WebApplication {
       try {
         const result = await routingResult.match.handler(ctx);
         if (result && typeof result.executeAsync === 'function') {
-          await result.executeAsync(ctx);
+          if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
+            await result.executeAsync(ctx);
+          }
         }
       } catch (err: unknown) {
         if (err instanceof RequestBindingException) {
-          ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
-          await ctx.response.writeJson(err.toProblemDetails(), 400);
-          return;
+          if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
+            ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+            await ctx.response.writeJson(err.toProblemDetails(), 400);
+            return;
+          }
         }
         throw err;
       }

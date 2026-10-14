@@ -103,8 +103,11 @@ export class HttpResponse {
   private readonly signal: AbortSignal;
   private readonly startingCallbacks: LifecycleCallback[] = [];
   private readonly completedCallbacks: LifecycleCallback[] = [];
+  private startingPromise?: Promise<void>;
+  private completedPromise?: Promise<void>;
   private startingFired = false;
   private completedFired = false;
+  private isWriting = false;
 
   constructor(res: ServerResponse, reqMethod: string, signal: AbortSignal) {
     this.res = res;
@@ -113,7 +116,7 @@ export class HttpResponse {
   }
 
   public onStarting(callback: LifecycleCallback): void {
-    if (this.startingFired || this.hasStarted) {
+    if (this.startingFired || this.hasStarted || this.res.writableEnded) {
       throw new Error('Cannot register onStarting callback after response has started.');
     }
     this.startingCallbacks.push(callback);
@@ -130,24 +133,38 @@ export class HttpResponse {
     if (this.startingFired) {
       return;
     }
-    this.startingFired = true;
-    for (const cb of this.startingCallbacks) {
-      await cb();
+    if (this.startingPromise) {
+      await this.startingPromise;
+      return;
     }
+    this.startingPromise = (async () => {
+      for (const cb of this.startingCallbacks) {
+        await cb();
+      }
+      this.startingFired = true;
+    })();
+    await this.startingPromise;
   }
 
   public async fireCompleted(): Promise<void> {
     if (this.completedFired) {
       return;
     }
-    this.completedFired = true;
-    for (const cb of this.completedCallbacks) {
-      try {
-        await cb();
-      } catch {
-        // Exceptions from onCompleted must not cause secondary response or crash
-      }
+    if (this.completedPromise) {
+      await this.completedPromise;
+      return;
     }
+    this.completedPromise = (async () => {
+      for (const cb of this.completedCallbacks) {
+        try {
+          await cb();
+        } catch {
+          // Exceptions from onCompleted must not cause secondary response or crash
+        }
+      }
+      this.completedFired = true;
+    })();
+    await this.completedPromise;
   }
 
   public get raw(): ServerResponse {
@@ -197,11 +214,13 @@ export class HttpResponse {
   }
 
   public async writeJson(data: any, statusCode = 200): Promise<void> {
-    if (this.hasStarted) return;
-    this.statusCode = statusCode;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
 
     await this.fireStarting();
-    if (this.hasStarted) return;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    this.isWriting = true;
+
+    this.statusCode = statusCode;
 
     // RFC compliance: 204 No Content MUST NOT send body or Content-Length
     if (this.statusCode === 204) {
@@ -233,11 +252,13 @@ export class HttpResponse {
   }
 
   public async writeText(text: string, statusCode = 200, contentType = 'text/plain; charset=utf-8'): Promise<void> {
-    if (this.hasStarted) return;
-    this.statusCode = statusCode;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
 
     await this.fireStarting();
-    if (this.hasStarted) return;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    this.isWriting = true;
+
+    this.statusCode = statusCode;
 
     // RFC compliance: 204 No Content
     if (this.statusCode === 204) {
@@ -266,11 +287,13 @@ export class HttpResponse {
   }
 
   public async writeStream(stream: Readable, statusCode = 200, contentType = 'application/octet-stream'): Promise<void> {
-    if (this.hasStarted) return;
-    this.statusCode = statusCode;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
 
     await this.fireStarting();
-    if (this.hasStarted) return;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    this.isWriting = true;
+
+    this.statusCode = statusCode;
 
     // RFC compliance: 204 / 304
     if (this.statusCode === 204 || this.statusCode === 304) {
@@ -305,13 +328,15 @@ export class HttpResponse {
   }
 
   public async end(statusCode?: number): Promise<void> {
-    if (this.hasStarted) return;
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+
+    await this.fireStarting();
+    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    this.isWriting = true;
+
     if (statusCode !== undefined) {
       this.statusCode = statusCode;
     }
-
-    await this.fireStarting();
-    if (this.hasStarted) return;
 
     if (this.statusCode === 204) {
       this.removeHeader('Content-Type');

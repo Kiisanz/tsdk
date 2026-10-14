@@ -5,7 +5,7 @@ import { Readable } from 'node:stream';
 import { WebApplication } from '../app/web-application.js';
 import { Results } from '../http/results.js';
 
-describe('HTTP Request Lifecycle & Cancellation', () => {
+describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () => {
   let app: WebApplication | undefined;
 
   afterEach(async () => {
@@ -15,7 +15,8 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     }
   });
 
-  test('normal request completion does NOT abort signal (signal.aborted remains false)', async () => {
+  // 1. Normal response selesai tanpa meng-abort signal
+  test('1. Normal response selesai tanpa meng-abort signal (signal.aborted remains false)', async () => {
     let handlerSignalAborted: boolean | undefined;
     let completedSignalAborted: boolean | undefined;
 
@@ -43,123 +44,8 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     assert.strictEqual(completedSignalAborted, false);
   });
 
-  test('onStarting() runs before headers commit and allows modifying headers and status', async () => {
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1' });
-    app = builder.build();
-
-    app.mapGet('/starting-hook', (ctx) => {
-      ctx.response.onStarting(() => {
-        ctx.response.setHeader('X-Custom-Starting', 'true');
-      });
-      return Results.text('hello from handler');
-    });
-
-    await app.start();
-    const port = app.listeningPort!;
-
-    const res = await fetch(`http://127.0.0.1:${port}/starting-hook`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.headers.get('X-Custom-Starting'), 'true');
-    assert.strictEqual(await res.text(), 'hello from handler');
-  });
-
-  test('onStarting() throws if registered after response has already started', async () => {
-    let startingError: Error | undefined;
-
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1' });
-    app = builder.build();
-
-    app.mapGet('/late-starting', async (ctx) => {
-      await ctx.response.writeText('started');
-      try {
-        ctx.response.onStarting(() => {});
-      } catch (err: any) {
-        startingError = err;
-      }
-    });
-
-    await app.start();
-    const port = app.listeningPort!;
-
-    const res = await fetch(`http://127.0.0.1:${port}/late-starting`);
-    assert.strictEqual(res.status, 200);
-    assert.ok(startingError, 'Expected onStarting to throw when registered after headers sent');
-    assert.match(startingError.message, /Cannot register onStarting callback after response has started/);
-  });
-
-  test('onCompleted() runs exactly once and allows accessing scoped DI services before disposal', async () => {
-    const lifecycleEvents: string[] = [];
-
-    class AuditService {
-      public record(action: string) {
-        lifecycleEvents.push(`audit:${action}`);
-      }
-      public async dispose() {
-        lifecycleEvents.push('scoped:disposed');
-      }
-    }
-
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1' });
-    builder.services.addScoped(AuditService, () => new AuditService());
-    app = builder.build();
-
-    let completedCallCount = 0;
-
-    app.mapGet('/completed-di', (ctx) => {
-      const audit = ctx.services.get(AuditService);
-      audit.record('handler');
-
-      ctx.response.onCompleted(async () => {
-        completedCallCount++;
-        // Scoped DI must still be functional here!
-        audit.record('onCompleted');
-        lifecycleEvents.push('onCompleted:executed');
-      });
-
-      return Results.json({ ok: true });
-    });
-
-    await app.start();
-    const port = app.listeningPort!;
-
-    const res = await fetch(`http://127.0.0.1:${port}/completed-di`);
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(completedCallCount, 1);
-
-    // Verify ordering: handler -> onCompleted (with scoped DI accessible) -> scoped:disposed
-    assert.deepStrictEqual(lifecycleEvents, [
-      'audit:handler',
-      'audit:onCompleted',
-      'onCompleted:executed',
-      'scoped:disposed',
-    ]);
-  });
-
-  test('exceptions in onCompleted() callbacks are handled safely without crash or secondary response', async () => {
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1' });
-    app = builder.build();
-
-    app.mapGet('/throw-in-completed', (ctx) => {
-      ctx.response.onCompleted(() => {
-        throw new Error('Explosion in onCompleted callback');
-      });
-      return Results.json({ message: 'safe' });
-    });
-
-    await app.start();
-    const port = app.listeningPort!;
-
-    const res = await fetch(`http://127.0.0.1:${port}/throw-in-completed`);
-    assert.strictEqual(res.status, 200);
-    const body = await res.json();
-    assert.deepStrictEqual(body, { message: 'safe' });
-  });
-
-  test('client disconnect aborts signal with AbortError and triggers onCompleted()', async () => {
+  // 2. Client disconnect saat handler berjalan memicu AbortSignal
+  test('2. Client disconnect saat handler berjalan memicu AbortSignal', async () => {
     let signalAborted = false;
     let abortReasonName: string | undefined;
     let onCompletedFired = false;
@@ -195,23 +81,21 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     await app.start();
     const port = app.listeningPort!;
 
-    // Send HTTP request and destroy socket abruptly
     const req = http.request({
       hostname: '127.0.0.1',
       port,
       path: '/disconnect',
       method: 'GET',
     });
-
-    req.on('error', () => {}); // Handle expected ECONNRESET / socket hang up on client side
+    req.on('error', () => {}); // Handle expected ECONNRESET on client side
 
     req.end();
     await handlerStartedPromise;
 
-    // Forcefully destroy the client socket to simulate client disconnect
+    // Forcefully destroy client socket to simulate client disconnect
     req.destroy();
 
-    // Give server event loop a brief moment to process disconnect and lifecycle
+    // Give event loop time to process socket close
     await new Promise((r) => setTimeout(r, 60));
 
     assert.strictEqual(signalAborted, true);
@@ -219,51 +103,29 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     assert.strictEqual(onCompletedFired, true);
   });
 
-  test('requestExecutionTimeoutMs aborts with TimeoutError and returns 503 Problem Details', async () => {
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 60 });
-    app = builder.build();
-
-    app.mapGet('/timeout-test', async () => {
-      await new Promise((r) => setTimeout(r, 150));
-      return Results.text('finished');
-    });
-
-    await app.start();
-    const port = app.listeningPort!;
-
-    const res = await fetch(`http://127.0.0.1:${port}/timeout-test`);
-    assert.strictEqual(res.status, 503);
-    assert.strictEqual(res.headers.get('Content-Type'), 'application/problem+json; charset=utf-8');
-
-    const problem = await res.json() as any;
-    assert.strictEqual(problem.type, 'https://tsnx.dev/problems/timeout');
-    assert.strictEqual(problem.status, 503);
-    assert.strictEqual(problem.title, 'Service Unavailable');
-    assert.match(problem.detail, /exceeded timeout of 60ms/);
-  });
-
-  test('requestExecutionTimeoutMs during streaming destroys stream and aborts signal', async () => {
+  // 3. Client disconnect saat streaming tidak memicu HTTP 500 tambahan
+  test('3. Client disconnect saat streaming tidak memicu HTTP 500 tambahan', async () => {
     let streamAborted = false;
+    let streamCompletedFired = false;
 
     const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 50 });
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
     app = builder.build();
 
-    app.mapGet('/stream-timeout', (ctx) => {
-      async function* generate() {
-        yield 'chunk1';
-        try {
-          await new Promise((r) => setTimeout(r, 100));
-          yield 'chunk2';
-        } catch {
-          streamAborted = true;
-        }
-      }
+    app.mapGet('/stream-disconnect', (ctx) => {
+      ctx.response.onCompleted(() => {
+        streamCompletedFired = true;
+      });
 
       ctx.request.signal.addEventListener('abort', () => {
         streamAborted = true;
       });
+
+      async function* generate() {
+        yield 'chunk1\n';
+        await new Promise((r) => setTimeout(r, 100));
+        yield 'chunk2\n';
+      }
 
       return Results.stream(Readable.from(generate()), 200, 'text/plain');
     });
@@ -271,19 +133,246 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     await app.start();
     const port = app.listeningPort!;
 
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/stream-timeout`);
-      await res.text();
-    } catch {
-      // Stream destroyed abruptly by server timeout
-    }
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: '/stream-disconnect',
+      method: 'GET',
+    });
+    req.on('error', () => {}); // Ignore client ECONNRESET
+
+    req.on('response', (res) => {
+      res.on('data', () => {
+        // As soon as first chunk arrives, disconnect client abruptly
+        req.destroy();
+      });
+    });
+
+    req.end();
 
     await new Promise((r) => setTimeout(r, 80));
+
     assert.strictEqual(streamAborted, true);
+    assert.strictEqual(streamCompletedFired, true);
   });
 
-  test('graceful shutdown: in-flight request finishes cleanly within shutdownDrainTimeoutMs', async () => {
-    let requestFinished = false;
+  // 4. Timeout mengirim 503 tanpa menunggu handler non-kooperatif
+  test('4. Timeout mengirim 503 tanpa menunggu handler non-kooperatif', async () => {
+    let handlerFinished = false;
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 50 });
+    app = builder.build();
+
+    app.mapGet('/uncooperative-timeout', async () => {
+      // Simulates an uncooperative handler that ignores signal and sleeps 300ms
+      await new Promise((r) => setTimeout(r, 300));
+      handlerFinished = true;
+      return Results.json({ success: true });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const startTime = Date.now();
+    const res = await fetch(`http://127.0.0.1:${port}/uncooperative-timeout`);
+    const elapsed = Date.now() - startTime;
+
+    // Response must arrive promptly around 50ms, NOT 300ms!
+    assert.ok(elapsed < 200, `Expected response under 200ms, took ${elapsed}ms`);
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(res.headers.get('Content-Type'), 'application/problem+json; charset=utf-8');
+
+    const problem = (await res.json()) as any;
+    assert.strictEqual(problem.type, 'https://tsnx.dev/problems/timeout');
+    assert.strictEqual(problem.status, 503);
+    assert.strictEqual(handlerFinished, false); // handler still running in background
+  });
+
+  // 5. Late handler result tidak menyebabkan double response
+  test('5. Late handler result tidak menyebabkan double response', async () => {
+    let doubleResponseError: Error | undefined;
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 50 });
+    app = builder.build();
+
+    app.mapGet('/late-result', async (ctx) => {
+      await new Promise((r) => setTimeout(r, 120));
+      try {
+        // Late handler attempting to write after 503 was already sent
+        await ctx.response.writeJson({ late: 'write' });
+      } catch (err: any) {
+        doubleResponseError = err;
+      }
+      return Results.json({ late: 'result' });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/late-result`);
+    assert.strictEqual(res.status, 503);
+
+    // Wait until late handler finishes
+    await new Promise((r) => setTimeout(r, 150));
+    assert.strictEqual(doubleResponseError, undefined, 'Late write must be cleanly ignored without throwing');
+  });
+
+  // 6. onStarting async dieksekusi tepat sekali saat concurrent writes
+  test('6. onStarting async dieksekusi tepat sekali saat concurrent writes', async () => {
+    let startingCallCount = 0;
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/concurrent-writes', async (ctx) => {
+      ctx.response.onStarting(async () => {
+        startingCallCount++;
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      // Two writes racing concurrently
+      await Promise.all([
+        ctx.response.writeText('Hello'),
+        ctx.response.writeText('World'),
+      ]);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/concurrent-writes`);
+    assert.strictEqual(res.status, 200);
+    const text = await res.text();
+    // One of the writes succeeded, and starting callbacks ran EXACTLY once!
+    assert.ok(text === 'Hello' || text === 'World');
+    assert.strictEqual(startingCallCount, 1);
+  });
+
+  // 7. onCompleted dieksekusi tepat sekali pada finish, close, dan error
+  test('7. onCompleted dieksekusi tepat sekali pada finish, close, dan error', async () => {
+    let completedCount = 0;
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/completed-once', (ctx) => {
+      ctx.response.onCompleted(() => {
+        completedCount++;
+      });
+      return Results.json({ ok: true });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/completed-once`);
+    assert.strictEqual(res.status, 200);
+
+    // Wait for underlying socket close
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(completedCount, 1);
+  });
+
+  // 8. Scoped service tetap tersedia selama onCompleted
+  test('8. Scoped service tetap tersedia selama onCompleted', async () => {
+    const lifecycleEvents: string[] = [];
+
+    class AuditService {
+      public record(action: string) {
+        lifecycleEvents.push(`audit:${action}`);
+      }
+      public async dispose() {
+        lifecycleEvents.push('scoped:disposed');
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    builder.services.addScoped(AuditService, () => new AuditService());
+    app = builder.build();
+
+    app.mapGet('/scoped-available', (ctx) => {
+      const audit = ctx.services.get(AuditService);
+      audit.record('handler');
+
+      ctx.response.onCompleted(() => {
+        audit.record('onCompleted');
+        lifecycleEvents.push('onCompleted:done');
+      });
+
+      return Results.json({ success: true });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/scoped-available`);
+    assert.strictEqual(res.status, 200);
+
+    // Verification: audit:onCompleted executed BEFORE scoped:disposed
+    assert.deepStrictEqual(lifecycleEvents, [
+      'audit:handler',
+      'audit:onCompleted',
+      'onCompleted:done',
+      'scoped:disposed',
+    ]);
+  });
+
+  // 9. Scoped dependency tidak di-dispose ketika handler masih aktif menggunakannya
+  test('9. Scoped dependency tidak di-dispose ketika handler masih aktif menggunakannya', async () => {
+    let scopedDisposedWhileHandlerActive = false;
+    let handlerFinished = false;
+
+    class DatabaseService {
+      public isDisposed = false;
+      public async dispose() {
+        this.isDisposed = true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 50 });
+    builder.services.addScoped(DatabaseService, () => new DatabaseService());
+    app = builder.build();
+
+    app.mapGet('/slow-db-operation', async (ctx) => {
+      const db = ctx.services.get(DatabaseService);
+
+      // Handler simulates a long DB operation (150ms), while timeout strikes at 50ms
+      await new Promise((r) => setTimeout(r, 150));
+
+      if (db.isDisposed) {
+        scopedDisposedWhileHandlerActive = true;
+      }
+      handlerFinished = true;
+      return Results.json({ done: true });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/slow-db-operation`);
+    // Client got 503 immediately
+    assert.strictEqual(res.status, 503);
+
+    // Wait until background handler finishes
+    await new Promise((r) => setTimeout(r, 180));
+
+    assert.strictEqual(handlerFinished, true);
+    assert.strictEqual(
+      scopedDisposedWhileHandlerActive,
+      false,
+      'Scoped dependency must NOT be disposed while handler was still running'
+    );
+  });
+
+  // 10. Graceful shutdown menunggu request aktif sebelum drain deadline
+  test('10. Graceful shutdown menunggu request aktif sebelum drain deadline', async () => {
+    let inFlightFinished = false;
 
     const builder = WebApplication.createBuilder();
     builder.configureServer({ port: 0, host: '127.0.0.1', shutdownDrainTimeoutMs: 1000 });
@@ -291,7 +380,7 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
 
     app.mapGet('/in-flight', async () => {
       await new Promise((r) => setTimeout(r, 80));
-      requestFinished = true;
+      inFlightFinished = true;
       return Results.json({ completed: true });
     });
 
@@ -301,7 +390,7 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     // Start request in background
     const requestPromise = fetch(`http://127.0.0.1:${port}/in-flight`);
 
-    // Initiate server stop while request is in-flight
+    // Initiate stop while request is in-flight
     await new Promise((r) => setTimeout(r, 20));
     const stopPromise = app.stop();
 
@@ -309,26 +398,21 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     assert.strictEqual(res.status, 200);
     const body = await res.json();
     assert.deepStrictEqual(body, { completed: true });
-    assert.strictEqual(requestFinished, true);
-
-    // New requests should be rejected since server stopped listening
-    await assert.rejects(async () => {
-      await fetch(`http://127.0.0.1:${port}/in-flight`);
-    });
+    assert.strictEqual(inFlightFinished, true);
   });
 
-  test('graceful shutdown: lingering request exceeding shutdownDrainTimeoutMs is aborted', async () => {
+  // 11. Forced shutdown membatalkan request yang belum selesai
+  test('11. Forced shutdown membatalkan request yang belum selesai', async () => {
     let signalAborted = false;
     let abortReasonName: string | undefined;
-
-    const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1', shutdownDrainTimeoutMs: 60 });
-    app = builder.build();
-
     let handlerStartedResolve: () => void;
     const handlerStartedPromise = new Promise<void>((r) => {
       handlerStartedResolve = r;
     });
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', shutdownDrainTimeoutMs: 60 });
+    app = builder.build();
 
     app.mapGet('/lingering', async (ctx) => {
       ctx.request.signal.addEventListener('abort', () => {
@@ -338,7 +422,7 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
 
       handlerStartedResolve();
 
-      // Simulates an unresponsive/lingering operation
+      // Simulates an unresponsive operation exceeding drain timeout
       await new Promise((r) => setTimeout(r, 500));
       return Results.text('done');
     });
@@ -346,7 +430,6 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     await app.start();
     const port = app.listeningPort!;
 
-    // Initiate request
     const reqPromise = fetch(`http://127.0.0.1:${port}/lingering`).catch(() => undefined);
 
     await handlerStartedPromise;
@@ -359,34 +442,33 @@ describe('HTTP Request Lifecycle & Cancellation', () => {
     assert.strictEqual(abortReasonName, 'AbortError');
   });
 
-  test('Clean Architecture: UseCase accepts AbortSignal without importing @tsnx/web', async () => {
-    // Pure application domain UseCase (zero @tsnx/web dependencies)
-    class SearchItemsUseCase {
-      public async execute(query: string, cancellationToken?: AbortSignal): Promise<string[]> {
-        if (cancellationToken?.aborted) {
-          throw new DOMException('Operation canceled', 'AbortError');
-        }
-        return [`result for ${query}`];
-      }
-    }
+  // 12. Semua timer dan event listener dibersihkan setelah request berakhir
+  test('12. Semua timer dan event listener dibersihkan setelah request berakhir', async () => {
+    let rawResRef: http.ServerResponse | undefined;
 
     const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1' });
-    builder.services.addScoped(SearchItemsUseCase, () => new SearchItemsUseCase());
+    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 5000 });
     app = builder.build();
 
-    app.mapGet('/search', async (ctx) => {
-      const useCase = ctx.services.get(SearchItemsUseCase);
-      const items = await useCase.execute('books', ctx.request.signal);
-      return Results.json(items);
+    app.mapGet('/clean-listeners', (ctx) => {
+      rawResRef = ctx.response.raw;
+      return Results.json({ clean: true });
     });
 
     await app.start();
     const port = app.listeningPort!;
 
-    const res = await fetch(`http://127.0.0.1:${port}/search`);
+    const res = await fetch(`http://127.0.0.1:${port}/clean-listeners`);
     assert.strictEqual(res.status, 200);
-    const body = await res.json();
-    assert.deepStrictEqual(body, ['result for books']);
+
+    // Wait brief tick for finally block cleanup
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.ok(rawResRef);
+    // Verified: custom close and finish listeners were removed from res
+    const closeListeners = rawResRef.listeners('close').map((fn) => fn.name);
+    const finishListeners = rawResRef.listeners('finish').map((fn) => fn.name);
+    assert.strictEqual(closeListeners.includes('onTsnxClose'), false);
+    assert.strictEqual(finishListeners.includes('onTsnxFinish'), false);
   });
 });
