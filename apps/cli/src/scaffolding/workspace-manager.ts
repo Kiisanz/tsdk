@@ -57,7 +57,7 @@ export class WorkspaceManager {
     }
     pkgJson.name = pkgJson.name ?? toKebabCase(name);
     pkgJson.private = true;
-    pkgJson.workspaces = pkgJson.workspaces ?? ['apps/*', 'packages/*', '*'];
+    pkgJson.workspaces = pkgJson.workspaces ?? ['*', '*/*'];
     pkgJson.devDependencies = {
       '@types/node': '^22.13.9',
       typescript: '^5.7.3',
@@ -92,9 +92,8 @@ export class WorkspaceManager {
     const pnpmWsPath = path.join(targetDir, 'pnpm-workspace.yaml');
     if (!fs.existsSync(pnpmWsPath)) {
       const pnpmWsContent = `packages:
-  - 'apps/*'
-  - 'packages/*'
   - '*'
+  - '*/*'
 `;
       fs.writeFileSync(pnpmWsPath, pnpmWsContent, 'utf-8');
     }

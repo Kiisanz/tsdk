@@ -21,11 +21,12 @@ export class TemplateGenerator {
     let projectDir: string;
     if (options.targetDir) {
       const resolvedTarget = path.resolve(process.cwd(), options.targetDir);
-      const base = path.basename(resolvedTarget);
-      if (base === 'apps' || base === 'packages') {
-        projectDir = path.join(resolvedTarget, name);
-      } else {
+      const base = path.basename(resolvedTarget).toLowerCase();
+      const nameLower = name.toLowerCase();
+      if (base === nameLower || nameLower.endsWith('.' + base) || nameLower.endsWith('-' + base)) {
         projectDir = resolvedTarget;
+      } else {
+        projectDir = path.join(resolvedTarget, name);
       }
     } else {
       projectDir = path.resolve(process.cwd(), name);
