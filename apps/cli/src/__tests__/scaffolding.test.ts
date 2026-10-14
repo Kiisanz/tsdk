@@ -231,7 +231,7 @@ console.log('Calculation:', add(10, 25));
       // 1. tsdk create webapi MyApi
       const createOutput = execFileSync(
         process.execPath,
-        [CLI_BIN, 'create', 'webapi', 'MyApi'],
+        [CLI_BIN, 'create', 'webapi', 'MyApi', '--no-install'],
         {
           cwd: tmpDir,
           encoding: 'utf-8',
@@ -250,10 +250,11 @@ console.log('Calculation:', add(10, 25));
       assert.equal(proj.name, 'MyApi');
       assert.equal(proj.type, 'webapi');
 
-      // Link node_modules so compiled code can import @tsnx/web and @types/node
+      // Link node_modules so compiled code can import @tsnx/web, @tsnx/hosting, @tsnx/hosting-abstractions and @types/node
       const monorepoRoot = path.resolve(fileURLToPath(new URL('../../../..', import.meta.url)));
       const webPkgDir = path.join(monorepoRoot, 'packages', 'web');
       const hostingPkgDir = path.join(monorepoRoot, 'packages', 'hosting');
+      const hostingAbstractionsPkgDir = path.join(monorepoRoot, 'packages', 'hosting-abstractions');
 
       const apiModules = path.join(apiDir, 'node_modules', '@tsnx');
       fs.mkdirSync(apiModules, { recursive: true });
@@ -263,8 +264,12 @@ console.log('Calculation:', add(10, 25));
       if (fs.existsSync(path.join(apiModules, 'hosting'))) {
         fs.rmSync(path.join(apiModules, 'hosting'), { recursive: true, force: true });
       }
+      if (fs.existsSync(path.join(apiModules, 'hosting-abstractions'))) {
+        fs.rmSync(path.join(apiModules, 'hosting-abstractions'), { recursive: true, force: true });
+      }
       fs.symlinkSync(webPkgDir, path.join(apiModules, 'web'), 'junction');
       fs.symlinkSync(hostingPkgDir, path.join(apiModules, 'hosting'), 'junction');
+      fs.symlinkSync(hostingAbstractionsPkgDir, path.join(apiModules, 'hosting-abstractions'), 'junction');
 
       // Link node_modules/@types
       const monorepoTypes = path.join(monorepoRoot, 'node_modules', '@types');

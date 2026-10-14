@@ -148,7 +148,7 @@ export class TemplateGenerator {
           type: 'webapi',
         },
         dependencies: {
-          '@tsnx/web': '^0.3.0',
+          '@tsnx/web': '^0.4.0',
         },
         devDependencies: {
           '@types/node': '^22.13.9',
