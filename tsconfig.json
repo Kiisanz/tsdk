@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/build" },
+    { "path": "./packages/hosting-abstractions" },
     { "path": "./packages/hosting" },
     { "path": "./packages/web" },
     { "path": "./apps/cli" }

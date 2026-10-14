@@ -88,7 +88,7 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          for pkg in @tsnx/core @tsnx/hosting @tsnx/build @tsnx/web @tsnx/cli; do
+          for pkg in @tsnx/core @tsnx/hosting-abstractions @tsnx/hosting @tsnx/build @tsnx/web @tsnx/cli; do
             echo "Setting latest dist-tag for $pkg@$VERSION..."
             npm dist-tag add $pkg@$VERSION latest || true
           done

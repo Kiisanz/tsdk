@@ -11,7 +11,7 @@ export async function runRef(
   args: string[],
   context: TsdkContext | null,
 ): Promise<number> {
-  if (!subCommand || subCommand === 'help') {
+  if (!subCommand || subCommand === 'help' || subCommand === '--help' || subCommand === '-h' || args.includes('--help') || args.includes('-h')) {
     console.log(`
 Usage:
   tsnx ref <subcommand> <targetProject>

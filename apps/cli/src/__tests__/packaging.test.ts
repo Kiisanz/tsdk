@@ -38,6 +38,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-pack-staging-'));
     const packagesToPack = [
       { name: 'core', pkgDir: path.join(monorepoRoot, 'packages', 'core') },
+      { name: 'hosting-abstractions', pkgDir: path.join(monorepoRoot, 'packages', 'hosting-abstractions') },
       { name: 'hosting', pkgDir: path.join(monorepoRoot, 'packages', 'hosting') },
       { name: 'build', pkgDir: path.join(monorepoRoot, 'packages', 'build') },
       { name: 'web', pkgDir: path.join(monorepoRoot, 'packages', 'web') },
@@ -226,10 +227,10 @@ it('adds two numbers correctly', () => {
         assert.ok(createApiOutput.includes('Project created successfully!'));
 
         const apiDir = path.join(consumerDir, 'MyApi');
-        // Install @tsnx/web and @tsnx/hosting in MyApi using the tarballs
+        // Install @tsnx/web, @tsnx/hosting, and @tsnx/hosting-abstractions in MyApi using the tarballs
         execFileSync(
           npmCmd,
-          ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting],
+          ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting, tarballPaths['hosting-abstractions']],
           {
             cwd: apiDir,
             encoding: 'utf-8',

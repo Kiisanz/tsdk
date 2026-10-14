@@ -21,7 +21,7 @@ Usage:
   tsnx <command> [options]
 
 Commands:
-  create <template> <name>   Create a new project (options: --no-install, --package-manager)
+  create <template> <name>   Create a new project (templates: console, library, webapi)
   workspace init [name]      Initialize a new solution workspace (options: -n, --scope, --no-scope)
   workspace add <path>       Register an existing project into the nearest workspace
   workspace remove <target>  Unregister a project from workspace references (options: --delete)
@@ -48,7 +48,14 @@ Options:
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
-  if (rawArgs.length === 0 || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  if (rawArgs.length === 0) {
+    printHelp();
+    process.exit(0);
+  }
+
+  const command = rawArgs[0];
+
+  if (command === '--help' || command === '-h' || command === 'help') {
     printHelp();
     process.exit(0);
   }
@@ -58,7 +65,13 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const command = rawArgs[0];
+  // If help requested on a command that doesn't have its own help handler, show global help
+  const commandsWithSubHelp = ['create', 'workspace', 'ref'];
+  if (!commandsWithSubHelp.includes(command) && (rawArgs.includes('--help') || rawArgs.includes('-h'))) {
+    printHelp();
+    process.exit(0);
+  }
+
   const subCommand = rawArgs[1];
 
   const forceWorkspace = rawArgs.includes('--workspace') || rawArgs.includes('-w');
