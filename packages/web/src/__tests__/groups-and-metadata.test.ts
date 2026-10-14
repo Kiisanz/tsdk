@@ -307,4 +307,72 @@ describe('Milestone 05: Route Groups & Structured Endpoint Metadata', () => {
     assert.ok(produces.some(p => p.statusCode === 201 && p.kind === 'produces'));
     assert.ok(produces.some(p => p.statusCode === 400 && p.kind === 'produces_problem'));
   });
+
+  test('Duplicate endpoint names fail fast during registry finalization at startup', async () => {
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/users', () => Results.ok()).withName('GetItems');
+    app.mapGet('/products', () => Results.ok()).withName('GetItems');
+
+    await assert.rejects(
+      async () => {
+        await app!.start();
+      },
+      (err: any) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("Duplicate endpoint name 'GetItems'"));
+        return true;
+      },
+    );
+  });
+
+  test('Metadata schema override: endpoint produces replaces group produces for same status code and content type', () => {
+    const BaseSchema = { base: String };
+    const DetailedSchema = { detailed: String };
+
+    const builder = WebApplication.createBuilder();
+    app = builder.build();
+
+    const group = app.mapGroup('/items')
+      .produces(200, BaseSchema);
+
+    const ep = group.mapGet('/', () => Results.ok())
+      .produces(200, DetailedSchema);
+
+    const effectiveProduces = ep.buildEffectiveMetadata().getProduces();
+    // Must be exactly 1 entry for 200 with DetailedSchema
+    assert.strictEqual(effectiveProduces.length, 1);
+    assert.strictEqual(effectiveProduces[0].statusCode, 200);
+    assert.strictEqual(effectiveProduces[0].kind, 'produces');
+    if (effectiveProduces[0].kind === 'produces') {
+      assert.strictEqual(effectiveProduces[0].schema, DetailedSchema);
+    }
+  });
+
+  test('Precompilation: router.finalize() precompiles effective filters and metadata before listening', async () => {
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    const group = app.mapGroup('/precompiled')
+      .withTags('GroupTag')
+      .addEndpointFilter(async (ctx, next) => await next(ctx));
+
+    group.mapGet('/route', () => Results.ok())
+      .withName('PrecompiledRoute')
+      .withTags('EndpointTag');
+
+    // Before start: endpoints getter still works
+    assert.strictEqual(app.endpoints.length, 1);
+
+    // Start triggers finalize()
+    await app.start();
+
+    // Introspect compiled metadata and filters
+    const ep = app.endpoints[0];
+    assert.ok(ep.metadata.getTags().includes('GroupTag'));
+    assert.ok(ep.metadata.getTags().includes('EndpointTag'));
+  });
 });

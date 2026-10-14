@@ -1,19 +1,23 @@
 import { RouteHandler } from '../http/results.js';
 import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
 import { EndpointArgumentDescriptor } from '../descriptors/types.js';
+import { EndpointFilterType } from '../filters/types.js';
+import { EndpointMetadataCollection } from '../metadata/collection.js';
 
 interface RouteSegment {
   isParam: boolean;
   value: string;
 }
 
-interface RouteEntry {
+export interface RouteEntry {
   method: string;
   pattern: string;
   segments: RouteSegment[];
   handler: (...args: any[]) => any;
   descriptors?: readonly EndpointArgumentDescriptor[];
   builder?: RouteHandlerBuilder;
+  compiledFilters?: readonly EndpointFilterType[];
+  compiledMetadata?: EndpointMetadataCollection;
 }
 
 export interface RouteMatch {
@@ -21,6 +25,8 @@ export interface RouteMatch {
   params: Record<string, string>;
   descriptors?: readonly EndpointArgumentDescriptor[];
   builder?: RouteHandlerBuilder;
+  compiledFilters?: readonly EndpointFilterType[];
+  compiledMetadata?: EndpointMetadataCollection;
   isHeadAuto?: boolean;
 }
 
@@ -89,6 +95,29 @@ export class Router {
     });
 
     return this;
+  }
+
+  public finalize(): void {
+    const names = new Map<string, RouteEntry>();
+
+    for (const route of this.routes) {
+      if (route.builder) {
+        const name = route.builder.getName();
+        if (name) {
+          const existing = names.get(name);
+          if (existing) {
+            throw new Error(
+              `Duplicate endpoint name '${name}' found on [${route.method}] ${route.pattern} and [${existing.method}] ${existing.pattern}. Endpoint names must be unique.`
+            );
+          }
+          names.set(name, route);
+        }
+
+        // Precompile effective filters and metadata deterministically before startup
+        route.compiledFilters = route.builder.buildEffectiveFilters();
+        route.compiledMetadata = route.builder.buildEffectiveMetadata();
+      }
+    }
   }
 
   public getRoutes(): readonly RouteEntry[] {
@@ -181,6 +210,8 @@ export class Router {
           params: exactMatch.params,
           descriptors: exactMatch.route.descriptors,
           builder: exactMatch.route.builder,
+          compiledFilters: exactMatch.route.compiledFilters,
+          compiledMetadata: exactMatch.route.compiledMetadata,
         },
       };
     }
@@ -196,6 +227,8 @@ export class Router {
             params: getMatch.params,
             descriptors: getMatch.route.descriptors,
             builder: getMatch.route.builder,
+            compiledFilters: getMatch.route.compiledFilters,
+            compiledMetadata: getMatch.route.compiledMetadata,
             isHeadAuto: true,
           },
         };

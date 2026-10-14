@@ -231,7 +231,7 @@ export class WebApplication {
    */
   public get endpoints(): readonly EndpointInfo[] {
     return this.router.getRoutes().map(route => {
-      const effectiveMetadata = route.builder?.buildEffectiveMetadata() ?? new EndpointMetadataCollection();
+      const effectiveMetadata = route.compiledMetadata ?? route.builder?.buildEffectiveMetadata() ?? new EndpointMetadataCollection();
       return {
         method: route.method,
         pattern: route.pattern,
@@ -273,6 +273,11 @@ export class WebApplication {
 
   private initHost(): void {
     if (this.appHost) return;
+
+    // Finalize endpoint registry deterministically before server starts listening:
+    // - Validates endpoint name uniqueness (fails fast if duplicate names exist)
+    // - Precompiles effective group & endpoint filters and metadata so first request has zero compilation overhead
+    this.router.finalize();
 
     // Terminal endpoint routing delegate
     // Execution Flow:
@@ -331,8 +336,8 @@ export class WebApplication {
       }
 
       const invocationContext = new DefaultEndpointFilterInvocationContext(ctx, args);
-      // Lazily compiles the full effective filter hierarchy: Parent Groups -> Child Groups -> Endpoint
-      const filters = routingResult.match.builder?.buildEffectiveFilters() ?? [];
+      // Uses precompiled effective filters (or fallback to on-the-fly compilation if matched outside initHost)
+      const filters = routingResult.match.compiledFilters ?? routingResult.match.builder?.buildEffectiveFilters() ?? [];
 
       let result: unknown;
       if (filters.length > 0) {
