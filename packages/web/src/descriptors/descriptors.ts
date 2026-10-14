@@ -9,6 +9,7 @@ import { EndpointArgumentDescriptor } from './types.js';
 export function body<T extends BindingSchema>(schema: T): EndpointArgumentDescriptor<Infer<T>> {
   return {
     source: 'body',
+    schema,
     resolveAsync: async (ctx: HttpContext) => {
       return await ctx.request.bindBody(schema);
     },
@@ -23,6 +24,7 @@ export function service<T = any>(token: ServiceIdentifier<T>): EndpointArgumentD
 export function service<T>(token: ServiceIdentifier<T>): EndpointArgumentDescriptor<T> {
   return {
     source: 'service',
+    token,
     resolveAsync: (ctx: HttpContext) => {
       return ctx.services.get(token as any);
     },
@@ -35,6 +37,7 @@ export function service<T>(token: ServiceIdentifier<T>): EndpointArgumentDescrip
 export function query<T extends BindingSchema>(schema: T): EndpointArgumentDescriptor<Infer<T>> {
   return {
     source: 'query',
+    schema,
     resolveAsync: (ctx: HttpContext) => {
       return ctx.request.bindQuery(schema);
     },
@@ -47,6 +50,7 @@ export function query<T extends BindingSchema>(schema: T): EndpointArgumentDescr
 export function route<T extends BindingSchema>(schema: T): EndpointArgumentDescriptor<Infer<T>> {
   return {
     source: 'route',
+    schema,
     resolveAsync: (ctx: HttpContext) => {
       return ctx.request.bindRoute(schema);
     },
@@ -60,6 +64,7 @@ export function header(name: string): EndpointArgumentDescriptor<string | undefi
   const lower = name.toLowerCase();
   return {
     source: 'header',
+    name: lower,
     resolveAsync: (ctx: HttpContext) => {
       const val = ctx.request.headers[lower];
       return Array.isArray(val) ? val.join(', ') : val;
