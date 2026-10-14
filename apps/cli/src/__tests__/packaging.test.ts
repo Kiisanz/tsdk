@@ -142,7 +142,8 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
         assert.ok(createConsoleOutput.includes('Project created successfully!'));
 
         const consoleDir = path.join(consumerDir, 'MyConsole');
-        assert.ok(fs.existsSync(path.join(consoleDir, 'MyConsole.tsproj')));
+        assert.ok(fs.existsSync(path.join(consoleDir, 'tsconfig.json')));
+        assert.ok(fs.existsSync(path.join(consoleDir, 'package.json')));
         assert.ok(fs.existsSync(path.join(consoleDir, 'src', 'main.ts')));
 
         // Build console project

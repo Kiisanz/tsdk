@@ -14,12 +14,12 @@ describe('Native TypeScript Workspace & Project References System', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-native-ws-'));
 
     try {
-      // 1. Default derived scope: tsnx init workspace -n ArasERP
+      // 1. Default derived scope: tsnx workspace init -n ArasERP
       const arasDir = path.join(tmpDir, 'ArasERP');
       fs.mkdirSync(arasDir, { recursive: true });
       const initOutput1 = execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'ArasERP'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'ArasERP'],
         { cwd: arasDir, encoding: 'utf-8' },
       );
       assert.ok(initOutput1.includes('Initialized workspace "ArasERP"'));
@@ -40,23 +40,23 @@ describe('Native TypeScript Workspace & Project References System', () => {
       assert.equal(ws1.name, 'ArasERP');
       assert.equal(ws1.scope, '@araserp');
 
-      // 2. Explicit scope: tsnx init workspace -n CustomApp --scope @mycorp
+      // 2. Explicit scope: tsnx workspace init -n CustomApp --scope @mycorp
       const customDir = path.join(tmpDir, 'CustomApp');
       fs.mkdirSync(customDir, { recursive: true });
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'CustomApp', '--scope', '@mycorp'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'CustomApp', '--scope', '@mycorp'],
         { cwd: customDir, encoding: 'utf-8' },
       );
       const customPkg = JSON.parse(fs.readFileSync(path.join(customDir, 'package.json'), 'utf-8'));
       assert.deepEqual(customPkg.tsnx, { name: 'CustomApp', scope: '@mycorp' });
 
-      // 3. No scope: tsnx init workspace -n PlainApp --no-scope
+      // 3. No scope: tsnx workspace init -n PlainApp --no-scope
       const plainDir = path.join(tmpDir, 'PlainApp');
       fs.mkdirSync(plainDir, { recursive: true });
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'PlainApp', '--no-scope'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'PlainApp', '--no-scope'],
         { cwd: plainDir, encoding: 'utf-8' },
       );
       const plainPkg = JSON.parse(fs.readFileSync(path.join(plainDir, 'package.json'), 'utf-8'));
@@ -73,7 +73,7 @@ describe('Native TypeScript Workspace & Project References System', () => {
       // 1. Initialize native workspace ArasERP
       execFileSync(
         process.execPath,
-        [CLI_BIN, 'init', 'workspace', '-n', 'ArasERP'],
+        [CLI_BIN, 'workspace', 'init', '-n', 'ArasERP'],
         { cwd: tmpDir, encoding: 'utf-8' },
       );
 

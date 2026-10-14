@@ -1,5 +1,4 @@
 import * as path from 'node:path';
-import { isNativeWorkspace } from '@tsnx/core';
 import { TsdkContext } from '../discovery.js';
 import {
   PackageManagerDetector,
@@ -112,7 +111,6 @@ Examples:
     console.log(`Creating TSNX ${templateTitles[template as TemplateType]} project...\n`);
 
     const ws = context?.kind === 'workspace' ? context.workspace : context?.parentWorkspace;
-    const isNative = ws ? isNativeWorkspace(ws.directory) : args.includes('--native');
 
     const projectDir = TemplateGenerator.createProject({
       name,
@@ -120,7 +118,6 @@ Examples:
       targetDir: explicitOutput,
       scope: ws?.scope,
       workspaceName: ws?.name,
-      native: isNative,
     });
 
     console.log(`✓ Project scaffolded`);

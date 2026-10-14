@@ -8,7 +8,6 @@ export interface InitWorkspaceOptions {
   scope?: string;
   noScope?: boolean;
   targetDir?: string;
-  legacy?: boolean;
 }
 
 export class WorkspaceManager {
@@ -28,44 +27,7 @@ export class WorkspaceManager {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const isLegacy = opts.legacy === true;
-
-    if (isLegacy) {
-      const tswFilePath = path.join(targetDir, `${name}.tswork`);
-      if (fs.existsSync(tswFilePath)) {
-        throw new Error(`Workspace manifest "${tswFilePath}" already exists.`);
-      }
-
-      const tswContent = `schemaVersion: 1
-kind: Workspace
-
-metadata:
-  name: ${name}
-
-projects: []
-
-defaults:
-  runtime: node
-  compiler:
-    target: ES2022
-    module: NodeNext
-    strict: true
-`;
-      fs.writeFileSync(tswFilePath, tswContent, 'utf-8');
-
-      const pnpmWsPath = path.join(targetDir, 'pnpm-workspace.yaml');
-      if (!fs.existsSync(pnpmWsPath)) {
-        const pnpmWsContent = `packages:
-  - 'apps/*'
-  - 'packages/*'
-`;
-        fs.writeFileSync(pnpmWsPath, pnpmWsContent, 'utf-8');
-      }
-
-      return tswFilePath;
-    }
-
-    // Native Workspace (tsconfig.json + package.json)
+    // Native Workspace (tsconfig.json + package.json + pnpm-workspace.yaml)
     const tsconfigPath = path.join(targetDir, 'tsconfig.json');
     const pkgJsonPath = path.join(targetDir, 'package.json');
 
@@ -95,6 +57,12 @@ defaults:
     }
     pkgJson.name = pkgJson.name ?? toKebabCase(name);
     pkgJson.private = true;
+    pkgJson.workspaces = pkgJson.workspaces ?? ['apps/*', 'packages/*', '*'];
+    pkgJson.devDependencies = {
+      '@types/node': '^22.13.9',
+      typescript: '^5.7.3',
+      ...(pkgJson.devDependencies ?? {}),
+    };
     pkgJson.tsnx = {
       name,
       ...(scope ? { scope } : {}),
@@ -126,6 +94,7 @@ defaults:
       const pnpmWsContent = `packages:
   - 'apps/*'
   - 'packages/*'
+  - '*'
 `;
       fs.writeFileSync(pnpmWsPath, pnpmWsContent, 'utf-8');
     }

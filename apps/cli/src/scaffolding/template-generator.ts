@@ -10,7 +10,6 @@ export interface CreateProjectOptions {
   targetDir?: string;
   scope?: string;
   workspaceName?: string;
-  native?: boolean;
 }
 
 export { toKebabCase };
@@ -18,7 +17,6 @@ export { toKebabCase };
 export class TemplateGenerator {
   static createProject(options: CreateProjectOptions): string {
     const { name, template } = options;
-    const isNative = options.native !== false;
 
     let projectDir: string;
     if (options.targetDir) {
@@ -46,65 +44,36 @@ export class TemplateGenerator {
     fs.mkdirSync(srcDir, { recursive: true });
 
     // Derive package identity
-    const pkgName = isNative
-      ? derivePackageName(name, options.scope, options.workspaceName)
-      : toKebabCase(name);
+    const pkgName = derivePackageName(name, options.scope, options.workspaceName);
 
-    if (isNative) {
-      // 1. Native tsconfig.json (Project References compatible)
-      const tsconfigJson: Record<string, any> = {
-        compilerOptions: {
-          composite: true,
-          ...(template === 'library'
-            ? {
-                declaration: true,
-                declarationMap: true,
-              }
-            : {}),
-          module: 'NodeNext',
-          moduleResolution: 'NodeNext',
-          target: 'ES2022',
-          rootDir: 'src',
-          outDir: 'dist',
-          strict: true,
-          skipLibCheck: true,
-        },
-        include: ['src/**/*.ts'],
-        references: [],
-      };
-      fs.writeFileSync(
-        path.join(projectDir, 'tsconfig.json'),
-        JSON.stringify(tsconfigJson, null, 2) + '\n',
-        'utf-8',
-      );
-    }
+    // 1. Native tsconfig.json (Project References compatible)
+    const tsconfigJson: Record<string, any> = {
+      compilerOptions: {
+        composite: true,
+        ...(template === 'library'
+          ? {
+              declaration: true,
+              declarationMap: true,
+            }
+          : {}),
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        target: 'ES2022',
+        rootDir: 'src',
+        outDir: 'dist',
+        strict: true,
+        skipLibCheck: true,
+      },
+      include: ['src/**/*.ts'],
+      references: [],
+    };
+    fs.writeFileSync(
+      path.join(projectDir, 'tsconfig.json'),
+      JSON.stringify(tsconfigJson, null, 2) + '\n',
+      'utf-8',
+    );
 
     if (template === 'console') {
-      if (!isNative) {
-        // Legacy .tsproj manifest
-        const tspContent = `schemaVersion: 1
-kind: Project
-
-metadata:
-  name: ${name}
-  version: 0.1.0
-
-spec:
-  type: console
-  runtime: node
-
-  source:
-    root: src
-    entry: src/main.ts
-
-  compiler:
-    target: ES2022
-    module: NodeNext
-    strict: true
-`;
-        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
-      }
-
       // package.json
       const pkgJson = {
         name: pkgName,
@@ -130,34 +99,6 @@ spec:
 `;
       fs.writeFileSync(path.join(srcDir, 'main.ts'), mainTsContent, 'utf-8');
     } else if (template === 'library') {
-      if (!isNative) {
-        // Legacy .tsproj manifest
-        const tspContent = `schemaVersion: 1
-kind: Project
-
-metadata:
-  name: ${name}
-  version: 0.1.0
-
-spec:
-  type: library
-  runtime: node
-
-  package:
-    name: "${pkgName}"
-
-  source:
-    root: src
-    entry: src/index.ts
-
-  compiler:
-    target: ES2022
-    module: NodeNext
-    strict: true
-`;
-        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
-      }
-
       // package.json
       const pkgJson = {
         name: pkgName,
@@ -194,31 +135,6 @@ spec:
 `;
       fs.writeFileSync(path.join(srcDir, 'index.ts'), indexTsContent, 'utf-8');
     } else if (template === 'webapi') {
-      if (!isNative) {
-        // Legacy .tsproj manifest
-        const tspContent = `schemaVersion: 1
-kind: Project
-
-metadata:
-  name: ${name}
-  version: 0.1.0
-
-spec:
-  type: webapi
-  runtime: node
-
-  source:
-    root: src
-    entry: src/main.ts
-
-  compiler:
-    target: ES2022
-    module: NodeNext
-    strict: true
-`;
-        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
-      }
-
       // package.json
       const pkgJson = {
         name: pkgName,
@@ -230,7 +146,7 @@ spec:
           type: 'webapi',
         },
         dependencies: {
-          '@tsnx/web': '^0.2.0',
+          '@tsnx/web': '^0.3.0',
         },
         devDependencies: {
           '@types/node': '^22.13.9',

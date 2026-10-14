@@ -5,23 +5,20 @@ export function runWorkspace(
   subCommand: string | undefined,
   args: string[],
   context: TsdkContext | null,
-  _isNativeInit = false,
 ): number {
   if (!subCommand || subCommand === 'help') {
     console.log(`
 Usage:
   tsnx workspace <subcommand> [options]
-  tsnx init workspace [options]
 
 Subcommands:
-  init [name]    Initialize a new native solution workspace with tsconfig.json & pnpm-workspace.yaml
+  init [name]    Initialize a new solution workspace with tsconfig.json & pnpm-workspace.yaml
   add <path>     Register an existing project into the nearest workspace
 
-Options:
+Options for "workspace init":
   -n, --name <name>    Workspace name
   --scope <scope>      Explicit npm package scope (e.g. @aras)
   --no-scope           Disable automatic package scope derivation
-  --legacy             Initialize with legacy .tswork manifest only
 `);
     return 0;
   }
@@ -30,7 +27,6 @@ Options:
     let explicitName: string | undefined;
     let explicitScope: string | undefined;
     let noScope = false;
-    let legacy = false;
     const positional: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -63,10 +59,6 @@ Options:
         noScope = true;
         continue;
       }
-      if (arg === '--legacy') {
-        legacy = true;
-        continue;
-      }
       if (!arg.startsWith('-')) {
         positional.push(arg);
       }
@@ -74,18 +66,15 @@ Options:
 
     const wsName = explicitName ?? positional[0];
     if (!wsName) {
-      console.error('[TSNX Error] Please specify a workspace name: tsnx init workspace -n <name>');
+      console.error('[TSNX Error] Please specify a workspace name: tsnx workspace init -n <name>');
       return 1;
     }
-
-    const isLegacy = legacy;
 
     try {
       const createdPath = WorkspaceManager.initWorkspace({
         name: wsName,
         scope: explicitScope,
         noScope,
-        legacy: isLegacy,
       });
       console.log(`\n✔ Initialized workspace "${wsName}" at ${createdPath}`);
       return 0;

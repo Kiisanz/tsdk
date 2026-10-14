@@ -104,7 +104,22 @@ Examples:
         }
 
         // 2. Dual-wiring: Update package.json dependencies
-        const targetPkgName = targetProj.manifest.spec.package?.name ?? targetProj.name.toLowerCase();
+        let targetPkgName = targetProj.manifest.spec.package?.name;
+        if (!targetPkgName) {
+          const targetPkgPath = path.join(targetProj.directory, 'package.json');
+          if (fs.existsSync(targetPkgPath)) {
+            try {
+              const p = JSON.parse(fs.readFileSync(targetPkgPath, 'utf-8'));
+              if (typeof p.name === 'string') {
+                targetPkgName = p.name;
+              }
+            } catch {}
+          }
+        }
+        if (!targetPkgName) {
+          targetPkgName = toKebabCase(targetProj.name);
+        }
+
         const pkgJsonPath = path.join(projDir, 'package.json');
         if (fs.existsSync(pkgJsonPath)) {
           try {
@@ -217,7 +232,21 @@ Examples:
     }
 
     // 2. Dual-wiring: Remove from package.json dependencies
-    const targetPkgName = targetProj?.manifest.spec.package?.name ?? toKebabCase(targetName);
+    let targetPkgName = targetProj?.manifest.spec.package?.name;
+    if (!targetPkgName && targetProj) {
+      const targetPkgPath = path.join(targetProj.directory, 'package.json');
+      if (fs.existsSync(targetPkgPath)) {
+        try {
+          const p = JSON.parse(fs.readFileSync(targetPkgPath, 'utf-8'));
+          if (typeof p.name === 'string') {
+            targetPkgName = p.name;
+          }
+        } catch {}
+      }
+    }
+    if (!targetPkgName) {
+      targetPkgName = toKebabCase(targetName);
+    }
     const pkgJsonPath = path.join(projDir, 'package.json');
     if (fs.existsSync(pkgJsonPath)) {
       try {
