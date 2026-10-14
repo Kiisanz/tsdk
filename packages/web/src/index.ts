@@ -7,6 +7,8 @@ export * from './binding/index.js';
 export * from './errors/index.js';
 export * from './filters/index.js';
 export * from './descriptors/index.js';
+export * from './metadata/index.js';
+export * from './groups/index.js';
 
 // Shared framework re-exports (ASP.NET Core style: DI, Config, Logging, Hosting)
 export * from '@tsnx/hosting';

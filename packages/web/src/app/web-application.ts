@@ -25,6 +25,16 @@ import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
 import { EndpointFilterPipeline } from '../filters/filter-pipeline.js';
 import { DefaultEndpointFilterInvocationContext } from '../filters/invocation-context.js';
 import { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
+import { RouteGroupBuilder } from '../groups/route-group-builder.js';
+import { EndpointMetadataCollection } from '../metadata/collection.js';
+
+export interface EndpointInfo {
+  readonly method: string;
+  readonly pattern: string;
+  readonly descriptors: readonly EndpointArgumentDescriptor[];
+  readonly builder?: RouteHandlerBuilder;
+  readonly metadata: EndpointMetadataCollection;
+}
 
 export class WebApplicationBuilder {
   private readonly builder: HostApplicationBuilder;
@@ -209,13 +219,37 @@ export class WebApplication {
     return this.mapEndpoint('PATCH', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  private mapEndpoint(
+  /**
+   * Creates a route group with a common path prefix and shared filter/metadata inheritance.
+   */
+  public mapGroup(prefix: string): RouteGroupBuilder {
+    return new RouteGroupBuilder(prefix, undefined, this);
+  }
+
+  /**
+   * Introspects all registered endpoints and their compiled metadata for OpenAPI or reflection.
+   */
+  public get endpoints(): readonly EndpointInfo[] {
+    return this.router.getRoutes().map(route => {
+      const effectiveMetadata = route.builder?.buildEffectiveMetadata() ?? new EndpointMetadataCollection();
+      return {
+        method: route.method,
+        pattern: route.pattern,
+        descriptors: route.descriptors ?? [],
+        builder: route.builder,
+        metadata: effectiveMetadata,
+      };
+    });
+  }
+
+  public mapEndpoint(
     method: string,
     pattern: string,
     handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
     maybeHandler?: (...args: any[]) => any,
+    parentGroup?: RouteGroupBuilder,
   ): RouteHandlerBuilder {
-    const builder = new RouteHandlerBuilder(method, pattern);
+    const builder = new RouteHandlerBuilder(method, pattern, parentGroup);
     if (Array.isArray(handlerOrDescriptors)) {
       if (!maybeHandler) {
         throw new Error(`Handler function is required when descriptors are provided for route [${method}] ${pattern}`);
@@ -297,7 +331,8 @@ export class WebApplication {
       }
 
       const invocationContext = new DefaultEndpointFilterInvocationContext(ctx, args);
-      const filters = routingResult.match.builder?.getFilters() ?? [];
+      // Lazily compiles the full effective filter hierarchy: Parent Groups -> Child Groups -> Endpoint
+      const filters = routingResult.match.builder?.buildEffectiveFilters() ?? [];
 
       let result: unknown;
       if (filters.length > 0) {

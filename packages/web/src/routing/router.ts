@@ -91,6 +91,10 @@ export class Router {
     return this;
   }
 
+  public getRoutes(): readonly RouteEntry[] {
+    return this.routes;
+  }
+
   public get(pattern: string, handler: RouteHandler): this {
     return this.map('GET', pattern, handler);
   }
