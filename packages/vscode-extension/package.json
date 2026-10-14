@@ -1,0 +1,94 @@
+{
+  "name": "vscode-tsnx",
+  "displayName": "TSNX",
+  "description": "Official Visual Studio Code extension for TSNX (TypeScript Next) Framework",
+  "version": "0.3.0",
+  "publisher": "tsnx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tsnx/tsnx"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Build Tools"
+  ],
+  "keywords": [
+    "tsnx",
+    "typescript",
+    "monorepo",
+    "workspace",
+    "build"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.tswork",
+    "workspaceContains:**/*.tsproj",
+    "workspaceContains:**/tsconfig.json",
+    "onLanguage:yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tsnx.syncConfigs",
+        "title": "Synchronize Project Configurations",
+        "category": "TSNX"
+      },
+      {
+        "command": "tsnx.buildWorkspace",
+        "title": "Build Workspace",
+        "category": "TSNX"
+      },
+      {
+        "command": "tsnx.cleanWorkspace",
+        "title": "Clean Workspace",
+        "category": "TSNX"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "*.tswork",
+        "url": "./schemas/tsnx.workspace.schema.json"
+      },
+      {
+        "fileMatch": "*.tsproj",
+        "url": "./schemas/tsnx.project.schema.json"
+      }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": "*.tswork",
+        "url": "./schemas/tsnx.workspace.schema.json"
+      },
+      {
+        "fileMatch": "*.tsproj",
+        "url": "./schemas/tsnx.project.schema.json"
+      }
+    ],
+    "typescriptServerPlugins": [
+      {
+        "name": "tsnx-tsserver-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ]
+  },
+  "dependencies": {
+    "@tsnx/build": "workspace:*",
+    "@tsnx/core": "workspace:*",
+    "tsnx-tsserver-plugin": "file:./plugins/tsnx-tsserver-plugin"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node esbuild.config.js",
+    "test": "node --test dist/__tests__/**/*.test.js"
+  }
+}

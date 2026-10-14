@@ -2,6 +2,7 @@ import { ProjectCompilerSpec } from '../project/types.js';
 
 export interface WorkspaceMetadata {
   name: string;
+  scope?: string;
 }
 
 export interface WorkspaceProjectEntry {

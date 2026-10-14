@@ -212,7 +212,7 @@ console.log('Calculation:', add(10, 25));
         cwd: runnerDir,
         encoding: 'utf-8',
       });
-      assert.ok(runOutput.includes('Calculation: 35'));
+      assert.ok(runOutput.includes('Calculation: 35'), `Expected "Calculation: 35" in runOutput, but received:\n${runOutput}`);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

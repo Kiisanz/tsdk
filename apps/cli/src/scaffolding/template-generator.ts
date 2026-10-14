@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { derivePackageName, toKebabCase } from '@tsnx/core';
 
 export type TemplateType = 'console' | 'library' | 'webapi';
 
@@ -7,25 +8,26 @@ export interface CreateProjectOptions {
   name: string;
   template: TemplateType;
   targetDir?: string;
+  scope?: string;
+  workspaceName?: string;
+  native?: boolean;
 }
 
-export function toKebabCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, '$1-$2')
-    .replace(/[\s_.]+/g, '-')
-    .toLowerCase();
-}
+export { toKebabCase };
 
 export class TemplateGenerator {
   static createProject(options: CreateProjectOptions): string {
     const { name, template } = options;
+    const isNative = options.native !== false;
+
     let projectDir: string;
     if (options.targetDir) {
       const resolvedTarget = path.resolve(process.cwd(), options.targetDir);
-      if (path.basename(resolvedTarget) === name) {
-        projectDir = resolvedTarget;
-      } else {
+      const base = path.basename(resolvedTarget);
+      if (base === 'apps' || base === 'packages') {
         projectDir = path.join(resolvedTarget, name);
+      } else {
+        projectDir = resolvedTarget;
       }
     } else {
       projectDir = path.resolve(process.cwd(), name);
@@ -43,11 +45,44 @@ export class TemplateGenerator {
     const srcDir = path.join(projectDir, 'src');
     fs.mkdirSync(srcDir, { recursive: true });
 
-    const pkgName = toKebabCase(name);
+    // Derive package identity
+    const pkgName = isNative
+      ? derivePackageName(name, options.scope, options.workspaceName)
+      : toKebabCase(name);
+
+    if (isNative) {
+      // 1. Native tsconfig.json (Project References compatible)
+      const tsconfigJson: Record<string, any> = {
+        compilerOptions: {
+          composite: true,
+          ...(template === 'library'
+            ? {
+                declaration: true,
+                declarationMap: true,
+              }
+            : {}),
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          target: 'ES2022',
+          rootDir: 'src',
+          outDir: 'dist',
+          strict: true,
+          skipLibCheck: true,
+        },
+        include: ['src/**/*.ts'],
+        references: [],
+      };
+      fs.writeFileSync(
+        path.join(projectDir, 'tsconfig.json'),
+        JSON.stringify(tsconfigJson, null, 2) + '\n',
+        'utf-8',
+      );
+    }
 
     if (template === 'console') {
-      // 1. .tsproj manifest
-      const tspContent = `schemaVersion: 1
+      if (!isNative) {
+        // Legacy .tsproj manifest
+        const tspContent = `schemaVersion: 1
 kind: Project
 
 metadata:
@@ -67,14 +102,19 @@ spec:
     module: NodeNext
     strict: true
 `;
-      fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+      }
 
-      // 2. package.json
+      // package.json
       const pkgJson = {
         name: pkgName,
         version: '0.1.0',
         type: 'module',
         main: './dist/main.js',
+        tsnx: {
+          name,
+          type: 'console',
+        },
         devDependencies: {
           '@types/node': '^22.13.9',
         },
@@ -85,13 +125,14 @@ spec:
         'utf-8',
       );
 
-      // 3. src/main.ts
+      // src/main.ts
       const mainTsContent = `console.log('Hello from ${name}!');
 `;
       fs.writeFileSync(path.join(srcDir, 'main.ts'), mainTsContent, 'utf-8');
     } else if (template === 'library') {
-      // 1. .tsproj manifest
-      const tspContent = `schemaVersion: 1
+      if (!isNative) {
+        // Legacy .tsproj manifest
+        const tspContent = `schemaVersion: 1
 kind: Project
 
 metadata:
@@ -114,20 +155,27 @@ spec:
     module: NodeNext
     strict: true
 `;
-      fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+      }
 
-      // 2. package.json
+      // package.json
       const pkgJson = {
         name: pkgName,
         version: '0.1.0',
         type: 'module',
+        private: true,
         main: './dist/index.js',
         types: './dist/index.d.ts',
         exports: {
           '.': {
             types: './dist/index.d.ts',
+            import: './dist/index.js',
             default: './dist/index.js',
           },
+        },
+        tsnx: {
+          name,
+          type: 'library',
         },
         devDependencies: {
           '@types/node': '^22.13.9',
@@ -139,15 +187,16 @@ spec:
         'utf-8',
       );
 
-      // 3. src/index.ts
+      // src/index.ts
       const indexTsContent = `export function add(a: number, b: number): number {
   return a + b;
 }
 `;
       fs.writeFileSync(path.join(srcDir, 'index.ts'), indexTsContent, 'utf-8');
     } else if (template === 'webapi') {
-      // 1. .tsproj manifest
-      const tspContent = `schemaVersion: 1
+      if (!isNative) {
+        // Legacy .tsproj manifest
+        const tspContent = `schemaVersion: 1
 kind: Project
 
 metadata:
@@ -167,14 +216,19 @@ spec:
     module: NodeNext
     strict: true
 `;
-      fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+        fs.writeFileSync(path.join(projectDir, `${name}.tsproj`), tspContent, 'utf-8');
+      }
 
-      // 2. package.json
+      // package.json
       const pkgJson = {
         name: pkgName,
         version: '0.1.0',
         type: 'module',
         main: './dist/main.js',
+        tsnx: {
+          name,
+          type: 'webapi',
+        },
         dependencies: {
           '@tsnx/web': '^0.2.0',
         },
@@ -188,7 +242,7 @@ spec:
         'utf-8',
       );
 
-      // 3. src/main.ts
+      // src/main.ts
       const mainTsContent = `import process from 'node:process';
 import { WebApplication, Results } from '@tsnx/web';
 

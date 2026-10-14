@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { TsProject } from '../project/project.js';
 import { parseWorkspaceYaml, WorkspaceValidationError } from './parser.js';
 import { TsWorkspaceManifest, WorkspaceDefaults } from './types.js';
+import { isNativeWorkspace, loadNativeWorkspaceSync } from './native.js';
 
 export class TsWorkspace {
   public readonly filePath: string;
@@ -22,6 +23,10 @@ export class TsWorkspace {
 
   get name(): string {
     return this.manifest.metadata.name;
+  }
+
+  get scope(): string | undefined {
+    return this.manifest.metadata.scope;
   }
 
   get defaults(): WorkspaceDefaults | undefined {
@@ -54,6 +59,9 @@ export class TsWorkspace {
 
   static loadSync(filePath: string): TsWorkspace {
     const resolvedPath = path.resolve(filePath);
+    if (isNativeWorkspace(resolvedPath)) {
+      return loadNativeWorkspaceSync(resolvedPath);
+    }
     const content = fs.readFileSync(resolvedPath, 'utf-8');
     const manifest = parseWorkspaceYaml(content, resolvedPath);
     const workspaceDir = path.dirname(resolvedPath);

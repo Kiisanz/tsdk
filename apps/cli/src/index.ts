@@ -22,6 +22,7 @@ Usage:
 
 Commands:
   create <template> <name>   Create a new project (options: --no-install, --package-manager)
+  init workspace [name]      Initialize a new solution workspace (options: -n, --scope, --no-scope)
   run [options] [args...]    Build and run project (options: --project, -p, --no-build)
   watch [args...]            Watch for changes, rebuild incrementally, and restart app
   test                       Run project tests using dependency graph
@@ -31,6 +32,7 @@ Commands:
   project list               List projects registered in workspace
   graph                      Visualize dependency relationships and build order
   ref add <target>           Add a project reference to current project
+  ref remove <target>        Remove a project reference and workspace dependency
   workspace <subcommand>     Workspace commands (init, add)
 
 Options:
@@ -103,6 +105,15 @@ async function main(): Promise<void> {
       exitCode = await runTestCommand(context, { forceWorkspace });
       break;
     }
+
+    case 'init':
+      if (subCommand === 'workspace') {
+        exitCode = runWorkspace('init', rawArgs.slice(2), context, true);
+      } else {
+        console.error(`[TSNX Error] Unknown init target: "${subCommand}". Supported: tsnx init workspace [options]`);
+        exitCode = 1;
+      }
+      break;
 
     case 'workspace':
       exitCode = runWorkspace(subCommand, rawArgs.slice(2), context);

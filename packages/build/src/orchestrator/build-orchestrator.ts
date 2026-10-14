@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
+import { ProjectGraph, TsProject, TsWorkspace, isNativeProject, isNativeWorkspace } from '@tsnx/core';
 import { ConfigGenerator } from '../generator/config-generator.js';
 import { BuildOptions, BuildResult } from './types.js';
 
@@ -33,12 +33,20 @@ export class BuildOrchestrator {
   ): Promise<BuildResult> {
     const startTime = Date.now();
 
-    // 1. Generate tsconfig files in .tsdk/generated/
-    const generatedConfig = ConfigGenerator.generateWorkspaceConfigs(workspace, graph);
-    await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+    let buildTargetConfig: string;
+    let generatedConfig: any = undefined;
+
+    if (isNativeWorkspace(workspace.directory)) {
+      buildTargetConfig = path.join(workspace.directory, 'tsconfig.json');
+    } else {
+      // 1. Generate tsconfig files in .tsdk/generated/
+      generatedConfig = ConfigGenerator.generateWorkspaceConfigs(workspace, graph);
+      await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+      buildTargetConfig = generatedConfig.rootConfigPath;
+    }
 
     // 2. Prepare arguments for tsc
-    const args: string[] = ['--build', generatedConfig.rootConfigPath];
+    const args: string[] = ['--build', buildTargetConfig];
 
     if (options.clean) {
       args.push('--clean');
@@ -81,17 +89,22 @@ export class BuildOrchestrator {
   ): Promise<BuildResult> {
     const startTime = Date.now();
 
-    // 1. Generate tsconfig files in .tsdk/generated/
-    const generatedConfig = ConfigGenerator.generateWorkspaceConfigs(workspace, graph);
-    await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+    let buildTargetConfig: string;
+    let generatedConfig: any = undefined;
 
-    // 2. Target specific project config in .tsdk/generated/
-    const projectConfigPath = path.join(
-      generatedConfig.generatedDir,
-      `${project.name}.tsconfig.json`,
-    );
+    if (isNativeProject(project.directory)) {
+      buildTargetConfig = path.join(project.directory, 'tsconfig.json');
+    } else {
+      // 1. Generate tsconfig files in .tsdk/generated/
+      generatedConfig = ConfigGenerator.generateWorkspaceConfigs(workspace, graph);
+      await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+      buildTargetConfig = path.join(
+        generatedConfig.generatedDir,
+        `${project.name}.tsconfig.json`,
+      );
+    }
 
-    const args: string[] = ['--build', projectConfigPath];
+    const args: string[] = ['--build', buildTargetConfig];
 
     if (options.clean) {
       args.push('--clean');
@@ -133,12 +146,20 @@ export class BuildOrchestrator {
   ): Promise<BuildResult> {
     const startTime = Date.now();
 
-    // 1. Generate standalone tsconfig files
-    const generatedConfig = ConfigGenerator.generateStandaloneProjectConfig(project, graph);
-    await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+    let buildTargetConfig: string;
+    let generatedConfig: any = undefined;
+
+    if (isNativeProject(project.directory)) {
+      buildTargetConfig = path.join(project.directory, 'tsconfig.json');
+    } else {
+      // 1. Generate standalone tsconfig files
+      generatedConfig = ConfigGenerator.generateStandaloneProjectConfig(project, graph);
+      await ConfigGenerator.writeGeneratedConfigs(generatedConfig);
+      buildTargetConfig = generatedConfig.rootConfigPath;
+    }
 
     // 2. Prepare arguments
-    const args: string[] = ['--build', generatedConfig.rootConfigPath];
+    const args: string[] = ['--build', buildTargetConfig];
 
     if (options.clean) {
       args.push('--clean');

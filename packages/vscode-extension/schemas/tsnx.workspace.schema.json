@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TSNX Workspace Manifest",
+  "description": "Configuration schema for TSNX workspace files (.tswork)",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "metadata", "projects"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "description": "Manifest schema version (currently 1)",
+      "default": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["Workspace"],
+      "description": "Resource kind, must be 'Workspace'"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the workspace"
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "description": "List of projects included in this workspace",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the project directory or .tsproj file"
+          }
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Workspace-wide default settings",
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "enum": ["node", "bun", "deno"],
+          "description": "Default runtime environment"
+        },
+        "compiler": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": ["ES2020", "ES2021", "ES2022", "ES2023", "ESNext"],
+              "description": "Default ECMAScript target"
+            },
+            "module": {
+              "type": "string",
+              "enum": ["NodeNext", "Node16", "ESNext"],
+              "description": "Default module system"
+            },
+            "strict": {
+              "type": "boolean",
+              "description": "Enable all strict type checking options",
+              "default": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

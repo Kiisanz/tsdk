@@ -6,3 +6,4 @@ dist/
 *.tgz
 .tsdk/
 .tsnx/
+*.vsix

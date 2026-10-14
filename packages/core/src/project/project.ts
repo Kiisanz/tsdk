@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseProjectYaml } from './parser.js';
 import { ProjectReference, ProjectType, TsProjectManifest } from './types.js';
+import { isNativeProject, loadNativeProjectSync } from './native.js';
 
 export class TsProject {
   public readonly filePath: string;
@@ -36,6 +37,9 @@ export class TsProject {
 
   static loadSync(filePath: string): TsProject {
     const resolvedPath = path.resolve(filePath);
+    if (isNativeProject(resolvedPath)) {
+      return loadNativeProjectSync(resolvedPath);
+    }
     const content = fs.readFileSync(resolvedPath, 'utf-8');
     const manifest = parseProjectYaml(content, resolvedPath);
     return new TsProject(resolvedPath, manifest);
