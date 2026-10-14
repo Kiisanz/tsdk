@@ -5,7 +5,7 @@ export function runWorkspace(
   subCommand: string | undefined,
   args: string[],
   context: TsdkContext | null,
-  isNativeInit = false,
+  _isNativeInit = false,
 ): number {
   if (!subCommand || subCommand === 'help') {
     console.log(`
@@ -78,8 +78,7 @@ Options:
       return 1;
     }
 
-    const isLegacy =
-      legacy || (!isNativeInit && !explicitName && !explicitScope && !noScope && !args.includes('--native'));
+    const isLegacy = legacy;
 
     try {
       const createdPath = WorkspaceManager.initWorkspace({

@@ -90,10 +90,10 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-scaffold-ws-'));
 
     try {
-      // 1. tsdk workspace init AcmeDemo
+      // 1. tsdk workspace init AcmeDemo --legacy
       const initOutput = execFileSync(
         process.execPath,
-        [CLI_BIN, 'workspace', 'init', 'AcmeDemo'],
+        [CLI_BIN, 'workspace', 'init', 'AcmeDemo', '--legacy'],
         {
           cwd: tmpDir,
           encoding: 'utf-8',
@@ -144,7 +144,7 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
 
     try {
       // 1. Init workspace
-      execFileSync(process.execPath, [CLI_BIN, 'workspace', 'init', 'FlowApp'], {
+      execFileSync(process.execPath, [CLI_BIN, 'workspace', 'init', 'FlowApp', '--legacy'], {
         cwd: tmpDir,
         encoding: 'utf-8',
       });
@@ -339,7 +339,7 @@ console.log('Calculation:', add(10, 25));
 
     try {
       // 1. Init workspace
-      execFileSync(process.execPath, [CLI_BIN, 'workspace', 'init', 'MySolution'], {
+      execFileSync(process.execPath, [CLI_BIN, 'workspace', 'init', 'MySolution', '--legacy'], {
         cwd: tmpDir,
         encoding: 'utf-8',
       });

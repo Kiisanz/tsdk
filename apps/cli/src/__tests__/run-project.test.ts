@@ -104,7 +104,7 @@ describe('tsnx run command options & workspace execution', () => {
       const mainPath = path.join(tmpDir, 'ArgApp', 'src', 'main.ts');
       fs.writeFileSync(
         mainPath,
-        `console.log('ARGS:' + JSON.stringify(process.argv.slice(2)));\n`,
+        `declare const process: any;\nconsole.log('ARGS:' + JSON.stringify(process.argv.slice(2)));\n`,
         'utf-8',
       );
 
