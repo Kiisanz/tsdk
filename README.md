@@ -8,11 +8,11 @@ TSNX simplifies building scalable, multi-project TypeScript solutions by introdu
 
 | Package | Version | Description |
 |---|---|---|
-| [`@tsnx/core`](./packages/core) | `0.2.0-alpha.3` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
-| [`@tsnx/hosting`](./packages/hosting) | `0.2.0-alpha.3` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
-| [`@tsnx/build`](./packages/build) | `0.2.0-alpha.3` | Compiler configuration generator, orchestrator, and package synchronization |
-| [`@tsnx/web`](./packages/web) | `0.2.0-alpha.3` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
-| [`@tsnx/cli`](./apps/cli) | `0.2.0-alpha.3` | Unified CLI (`tsnx create`, `build`, `run`, `test`, `watch`, `restore`) |
+| [`@tsnx/core`](./packages/core) | `0.2.0` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
+| [`@tsnx/hosting`](./packages/hosting) | `0.2.0` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
+| [`@tsnx/build`](./packages/build) | `0.2.0` | Compiler configuration generator, orchestrator, and package synchronization |
+| [`@tsnx/web`](./packages/web) | `0.2.0` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
+| [`@tsnx/cli`](./apps/cli) | `0.2.0` | Unified CLI (`tsnx create`, `build`, `run`, `test`, `watch`, `restore`) |
 
 ## Quick Start
 
