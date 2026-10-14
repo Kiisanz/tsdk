@@ -23,8 +23,13 @@ export function bindBody<T extends BindingSchema>(
   const record = rawJson as Record<string, any>;
 
   for (const [key, field] of Object.entries(schema)) {
+    // Prototype pollution prevention: forbid special prototype keys
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
+
     const meta = inspectField(field);
-    const hasProp = key in record && record[key] !== undefined;
+    const hasProp = Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined;
     const value = record[key];
 
     // 1. Missing / undefined handling

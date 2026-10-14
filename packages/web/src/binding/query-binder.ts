@@ -76,12 +76,29 @@ export function bindQuery<T extends BindingSchema>(
 
     if (isSearchParams) {
       if (querySource.has(key)) {
+        const allVals = querySource.getAll(key);
+        if (allVals.length > 1) {
+          errors.push({
+            source: 'query',
+            path: key,
+            message: `Query parameter '${key}' cannot have multiple values`,
+          });
+          continue;
+        }
         exists = true;
-        rawValue = querySource.get(key) ?? undefined;
+        rawValue = allVals[0];
       }
     } else {
       const val = querySource[key];
       if (val !== undefined) {
+        if (Array.isArray(val) && val.length > 1) {
+          errors.push({
+            source: 'query',
+            path: key,
+            message: `Query parameter '${key}' cannot have multiple values`,
+          });
+          continue;
+        }
         exists = true;
         rawValue = Array.isArray(val) ? val[0] : val;
       }

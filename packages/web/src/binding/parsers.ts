@@ -6,7 +6,7 @@ export function parseIso8601Date(
   }
 
   const trimmed = raw.trim();
-  const isoRegex = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:Z|([+-]\d{2}:?\d{2}))?)?$/;
+  const isoRegex = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?)?$/;
   const match = isoRegex.exec(trimmed);
   if (!match) {
     return {
@@ -32,7 +32,14 @@ export function parseIso8601Date(
     return { success: false, error: 'Invalid calendar date' };
   }
 
-  const parsedDate = new Date(trimmed);
+  // Date-only format (YYYY-MM-DD) is deterministically interpreted as UTC midnight (00:00:00.000Z)
+  if (match[4] === undefined) {
+    return { success: true, value: checkDate };
+  }
+
+  // If time is provided without timezone offset, enforce UTC to prevent host-local drift
+  const dateString = match[8] === undefined ? `${trimmed}Z` : trimmed;
+  const parsedDate = new Date(dateString);
   if (Number.isNaN(parsedDate.getTime())) {
     return { success: false, error: 'Invalid calendar date' };
   }

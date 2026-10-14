@@ -347,7 +347,7 @@ describe('HTTP Request Binding - WebApplication Integration & RFC 9457 Problem D
 
     const problem = (await res.json()) as any;
     assert.equal(problem.status, 400);
-    assert.equal(problem.type, 'https://tools.ietf.org/html/rfc9457');
+    assert.equal(problem.type, 'https://tsnx.dev/problems/request-binding');
     assert.equal(problem.title, 'One or more request binding errors occurred.');
     assert(Array.isArray(problem.errors.title));
     assert(Array.isArray(problem.errors.priority));
@@ -404,4 +404,104 @@ describe('HTTP Request Binding - WebApplication Integration & RFC 9457 Problem D
     await app.stop();
     app = undefined;
   });
+
+  it('prevents prototype pollution from payload', () => {
+    const Schema = {
+      title: String,
+    };
+
+    const maliciousJson = JSON.parse('{"__proto__": {"polluted": true}, "constructor": {"prototype": {"polluted2": true}}, "title": "Safe Task"}');
+    const result = bindBody(Schema, maliciousJson);
+
+    assert.equal(result.title, 'Safe Task');
+    assert.equal(({} as any).polluted, undefined);
+    assert.equal(({} as any).polluted2, undefined);
+    assert.equal(Object.prototype.hasOwnProperty('polluted'), false);
+    assert.equal(Object.prototype.hasOwnProperty('polluted2'), false);
+  });
+
+  it('guarantees date-only YYYY-MM-DD is deterministically parsed as UTC midnight (00:00:00.000Z)', () => {
+    const res = parseIso8601Date('2026-10-14');
+    assert.equal(res.success, true);
+    if (res.success) {
+      assert.equal(res.value.toISOString(), '2026-10-14T00:00:00.000Z');
+      assert.equal(res.value.getUTCFullYear(), 2026);
+      assert.equal(res.value.getUTCMonth(), 9); // 0-indexed October
+      assert.equal(res.value.getUTCDate(), 14);
+      assert.equal(res.value.getUTCHours(), 0);
+      assert.equal(res.value.getUTCMinutes(), 0);
+      assert.equal(res.value.getUTCSeconds(), 0);
+      assert.equal(res.value.getUTCMilliseconds(), 0);
+    }
+  });
+
+  it('rejects repeated query parameters for scalar schema fields', () => {
+    const QuerySchema = {
+      page: Number,
+    };
+
+    const params = new URLSearchParams('page=1&page=2');
+    assert.throws(
+      () => bindQuery(QuerySchema, params),
+      (err: any) => {
+        assert(err instanceof RequestBindingException);
+        assert.equal(err.entries[0].source, 'query');
+        assert.equal(err.entries[0].path, 'page');
+        assert(err.entries[0].message.includes('cannot have multiple values'));
+        return true;
+      },
+    );
+  });
+
+  it('handles malformed JSON body with 400 Bad Request', async () => {
+    const Schema = { title: String };
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapPost('/test', async (ctx) => {
+      const body = await ctx.request.bindBody(Schema);
+      return Results.ok(body);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"title": broken json',
+    });
+
+    assert.equal(res.status, 400);
+
+    await app.stop();
+    app = undefined;
+  });
+
+  it('enforces body size limit during bindBody() and returns 413 Payload Too Large', async () => {
+    const Schema = { title: String };
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.configureServer({ maxBodySizeBytes: 50 });
+    app = builder.build();
+
+    app.mapPost('/test-large', async (ctx) => {
+      const body = await ctx.request.bindBody(Schema);
+      return Results.ok(body);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test-large`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'A'.repeat(200) }),
+    });
+
+    assert.equal(res.status, 413);
+
+    await app.stop();
+    app = undefined;
+  });
 });
+

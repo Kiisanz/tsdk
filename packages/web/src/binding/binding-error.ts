@@ -37,7 +37,7 @@ export class RequestBindingException extends Error {
     }
 
     return {
-      type: 'https://tools.ietf.org/html/rfc9457',
+      type: 'https://tsnx.dev/problems/request-binding',
       title: 'One or more request binding errors occurred.',
       status: 400,
       errors,

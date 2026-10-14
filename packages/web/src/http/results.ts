@@ -137,7 +137,7 @@ export class Results {
     statusCode = 400
   ): HttpResult {
     return new ProblemResult(title, statusCode, undefined, {
-      type: 'https://tools.ietf.org/html/rfc9457',
+      type: 'https://tsnx.dev/problems/validation',
       errors,
     });
   }
