@@ -3,9 +3,10 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseRunArgs } from '../commands/run.js';
+import { WatchSupervisor } from '../commands/watch.js';
 
 const CLI_BIN = fileURLToPath(new URL('../index.js', import.meta.url));
 
@@ -214,6 +215,247 @@ describe('tsnx run command options & workspace execution', () => {
         assert.ok(stderr.includes('Project "GhostApp" not found in workspace "ErrWs"'));
         assert.ok(stderr.includes('ExistingApp (console)'));
       }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('M-09: watch stopChildProcess forcefully terminates child process with SIGKILL if it ignores SIGTERM', async () => {
+    // Spawn a node child process that traps SIGTERM and ignores it, notifying on stdout when ready
+    const child = spawn(
+      process.execPath,
+      ['-e', 'process.on("SIGTERM", () => {}); console.log("READY"); setInterval(() => {}, 1000);'],
+      { stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+
+    // Wait until child is running and has registered the SIGTERM handler
+    await new Promise<void>((resolve) => {
+      child.stdout.once('data', () => resolve());
+    });
+
+    const supervisor = new WatchSupervisor({ kind: 'project', project: {} as any, filePath: '' }, {});
+    supervisor.setChildProcessForTesting(child);
+
+    assert.ok(child.pid);
+    const pid = child.pid;
+
+    // Verify process is running
+    assert.doesNotThrow(() => process.kill(pid, 0));
+
+    // Call stopChildProcess with 150ms timeout (should send SIGTERM, wait 150ms, then force-kill with SIGKILL)
+    await supervisor.stopChildProcess(150);
+
+    // Verify process has exited via SIGKILL
+    assert.strictEqual(child.signalCode, 'SIGKILL');
+
+    // Verify process is no longer running in OS
+    assert.throws(
+      () => process.kill(pid, 0),
+      (err: any) => err.code === 'ESRCH',
+    );
+  });
+
+  it('M-16: tsnx run maps signal termination to a non-zero exit code', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-run-sig-'));
+
+    try {
+      execFileSync(process.execPath, [CLI_BIN, 'create', 'console', 'SigApp', '--no-install'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      });
+
+      const appDir = path.join(tmpDir, 'SigApp');
+      const mainPath = path.join(appDir, 'src', 'main.ts');
+
+      // Application outputs READY then keeps running
+      fs.writeFileSync(
+        mainPath,
+        `console.log('READY_FOR_SIGNAL');
+setInterval(() => {}, 1000);
+`,
+        'utf-8',
+      );
+
+      // Build app first
+      execFileSync(process.execPath, [CLI_BIN, 'build'], {
+        cwd: appDir,
+        encoding: 'utf-8',
+      });
+
+      // Run app via tsnx run
+      const cliChild = spawn(process.execPath, [CLI_BIN, 'run', '--no-build'], {
+        cwd: appDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      // Wait until child is running
+      await new Promise<void>((resolve, reject) => {
+        let output = '';
+        const onData = (data: Buffer) => {
+          output += data.toString();
+          if (output.includes('READY_FOR_SIGNAL')) {
+            cliChild.stdout?.removeListener('data', onData);
+            resolve();
+          }
+        };
+        cliChild.stdout?.on('data', onData);
+        cliChild.on('error', reject);
+      });
+
+      // Send SIGTERM to the CLI process
+      cliChild.kill('SIGTERM');
+
+      const exitStatus = await new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((resolve) => {
+        cliChild.on('close', (code, sig) => {
+          resolve({ code, sig });
+        });
+      });
+
+      // Must exit with a non-zero exit code (128 + 15 = 143 or signalCode SIGTERM)
+      if (exitStatus.code !== null) {
+        assert.notEqual(exitStatus.code, 0, 'CLI exit code must not be 0 when terminated by signal');
+        assert.equal(exitStatus.code, 143, 'CLI exit code for SIGTERM must be 128 + 15 = 143');
+      } else {
+        assert.equal(exitStatus.sig, 'SIGTERM');
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('M-17: tsnx run forwards repeated signals to running child', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-run-sig-repeat-'));
+
+    try {
+      execFileSync(process.execPath, [CLI_BIN, 'create', 'console', 'SigRepeatApp', '--no-install'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      });
+
+      const appDir = path.join(tmpDir, 'SigRepeatApp');
+      const mainPath = path.join(appDir, 'src', 'main.ts');
+
+      // The child listens to SIGTERM:
+      // - First SIGTERM: logs 'SIGTERM_COUNT_1', but keeps running (simulating slow graceful shutdown)
+      // - Second SIGTERM: logs 'SIGTERM_COUNT_2' and exits with 143
+      fs.writeFileSync(
+        mainPath,
+        `let count = 0;
+process.on('SIGTERM', () => {
+  count++;
+  console.log('SIGTERM_COUNT_' + count);
+  if (count >= 2) {
+    process.exit(143);
+  }
+});
+console.log('READY_FOR_REPEATED_SIGNAL');
+setInterval(() => {}, 1000);
+`,
+        'utf-8',
+      );
+
+      // Build app first
+      execFileSync(process.execPath, [CLI_BIN, 'build'], {
+        cwd: appDir,
+        encoding: 'utf-8',
+      });
+
+      // Run app via tsnx run
+      const cliChild = spawn(process.execPath, [CLI_BIN, 'run', '--no-build'], {
+        cwd: appDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let fullOutput = '';
+      cliChild.stdout?.on('data', (d: Buffer) => {
+        fullOutput += d.toString();
+      });
+
+      // Wait until child is running
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(() => {
+          if (fullOutput.includes('READY_FOR_REPEATED_SIGNAL')) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 50);
+        cliChild.on('error', (err) => {
+          clearInterval(interval);
+          reject(err);
+        });
+      });
+
+      // Send 1st SIGTERM
+      cliChild.kill('SIGTERM');
+
+      // Wait until child processes 1st SIGTERM
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(() => {
+          if (fullOutput.includes('SIGTERM_COUNT_1')) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 50);
+        cliChild.on('error', (err) => {
+          clearInterval(interval);
+          reject(err);
+        });
+      });
+
+      // Send 2nd SIGTERM
+      cliChild.kill('SIGTERM');
+
+      const exitStatus = await new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((resolve) => {
+        cliChild.on('close', (code, sig) => {
+          resolve({ code, sig });
+        });
+      });
+
+      assert.ok(
+        fullOutput.includes('SIGTERM_COUNT_2'),
+        'Child process must receive second SIGTERM forwarded by CLI',
+      );
+      assert.equal(exitStatus.code, 143);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('M-24: watchDirectorySubtree fallback detects file changes in deeply nested directories', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-watch-subtree-'));
+
+    try {
+      const deepDir = path.join(tmpDir, 'src', 'features', 'users', 'services');
+      fs.mkdirSync(deepDir, { recursive: true });
+
+      const supervisor = new WatchSupervisor({ kind: 'project', project: {} as any, filePath: '' }, {});
+
+      let changeDetected = false;
+      supervisor.watchDirectorySubtreeForTesting(path.join(tmpDir, 'src'), () => {
+        changeDetected = true;
+      });
+
+      // Write a file in the deeply nested directory
+      const testFile = path.join(deepDir, 'user.service.ts');
+      fs.writeFileSync(testFile, 'export class UserService {}', 'utf-8');
+
+      // Wait for watcher notification
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const interval = setInterval(() => {
+          attempts++;
+          if (changeDetected) {
+            clearInterval(interval);
+            resolve();
+          } else if (attempts > 40) { // 2s timeout
+            clearInterval(interval);
+            reject(new Error('Watch event not detected in nested directory'));
+          }
+        }, 50);
+      });
+
+      assert.strictEqual(changeDetected, true, 'Subtree watcher must detect change in nested directory');
+      supervisor.closeWatchersForTesting();
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

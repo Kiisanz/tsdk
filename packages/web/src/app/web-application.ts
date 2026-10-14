@@ -406,15 +406,25 @@ export class WebApplication {
     await this.appHost!.start();
   }
 
-  public async stop(): Promise<void> {
+  public async stop(cancellationToken?: AbortSignal): Promise<void> {
     if (this.appHost) {
-      await this.appHost.stop();
+      await this.appHost.stop(cancellationToken);
     }
   }
 
   public async run(): Promise<void> {
     this.initHost();
     await this.appHost!.run();
+  }
+
+  public async dispose(): Promise<void> {
+    if (this.appHost) {
+      await this.appHost.dispose();
+    }
+  }
+
+  public async [Symbol.asyncDispose](): Promise<void> {
+    await this.dispose();
   }
 
   public static createBuilder(args: string[] = []): WebApplicationBuilder {

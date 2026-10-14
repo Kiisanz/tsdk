@@ -659,4 +659,178 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     const json = await res.json() as any;
     assert.strictEqual(json.title, 'Clean Response');
   });
+
+  // --------------------------------------------------------------------------
+  // 17. M-02: Exception handler registered via factory is disposed with request scope
+  // --------------------------------------------------------------------------
+  it('17. M-02: Exception handler registered via factory is disposed with request scope', async () => {
+    let createdCount = 0;
+    let disposedCount = 0;
+
+    class DisposableFactoryHandler implements IExceptionHandler {
+      constructor() {
+        createdCount++;
+      }
+
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        ctx.response.writeProblem({
+          status: 500,
+          title: 'Handled by Factory',
+        });
+        return true;
+      }
+
+      dispose() {
+        disposedCount++;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(() => new DisposableFactoryHandler());
+    app = builder.build();
+
+    app.mapGet('/fail-1', () => {
+      throw new Error('Failure 1');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res1 = await fetch(`http://127.0.0.1:${port}/fail-1`);
+    assert.strictEqual(res1.status, 500);
+    assert.strictEqual(createdCount, 1);
+    assert.strictEqual(disposedCount, 1);
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/fail-1`);
+    assert.strictEqual(res2.status, 500);
+    assert.strictEqual(createdCount, 2);
+    assert.strictEqual(disposedCount, 2);
+  });
+
+  // --------------------------------------------------------------------------
+  // 18. M-05: tryHandleAsync() returning false restores modified and deleted original headers
+  // --------------------------------------------------------------------------
+  it('18. M-05: tryHandleAsync() returning false restores modified and deleted original headers', async () => {
+    class WeakeningHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Attempts to weaken security headers and delete headers
+        ctx.response.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        ctx.response.setHeader('Access-Control-Allow-Origin', '*');
+        ctx.response.removeHeader('X-Content-Type-Options');
+        ctx.response.setHeader('X-New-Pollution', 'polluted');
+        ctx.response.statusCode = 418;
+        return false; // Rejects handling!
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+
+    // Middleware sets strict security policy headers
+    builder.services.addExceptionHandler(WeakeningHandler);
+    app = builder.build();
+
+    app.use(async (ctx, next) => {
+      ctx.response.setHeader('X-Frame-Options', 'DENY');
+      ctx.response.setHeader('Access-Control-Allow-Origin', 'https://trusted.example');
+      ctx.response.setHeader('X-Content-Type-Options', 'nosniff');
+      await next(ctx);
+    });
+
+    app.mapGet('/test-security-rollback', () => {
+      throw new Error('Trigger exception for rollback test');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test-security-rollback`);
+    assert.strictEqual(res.status, 500);
+
+    // Verify original headers were completely restored!
+    assert.strictEqual(res.headers.get('x-frame-options'), 'DENY');
+    assert.strictEqual(res.headers.get('access-control-allow-origin'), 'https://trusted.example');
+    assert.strictEqual(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.strictEqual(res.headers.get('x-new-pollution'), null);
+  });
+
+  // --------------------------------------------------------------------------
+  // 19. M-05: tryHandleAsync() returning false restores in-place mutated array headers
+  // --------------------------------------------------------------------------
+  it('19. M-05: tryHandleAsync() returning false restores in-place mutated array headers', async () => {
+    class InPlaceMutatingHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Attempts in-place array mutation on multi-value header
+        const rawHeaders = ctx.response.raw.getHeaders();
+        const cookies = rawHeaders['set-cookie'];
+        if (Array.isArray(cookies)) {
+          cookies.push('malicious_session=stolen; Path=/; HttpOnly');
+        }
+        return false; // Rejects handling!
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(InPlaceMutatingHandler);
+    app = builder.build();
+
+    app.use(async (ctx, next) => {
+      ctx.response.setHeader('Set-Cookie', ['session=abc12345; Secure', 'theme=dark']);
+      await next(ctx);
+    });
+
+    app.mapGet('/test-array-rollback', () => {
+      throw new Error('Trigger exception for array rollback test');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test-array-rollback`);
+    assert.strictEqual(res.status, 500);
+
+    // Verify Set-Cookie array does NOT contain the malicious entry
+    const setCookieHeader = res.headers.getSetCookie();
+    assert.deepStrictEqual(setCookieHeader, ['session=abc12345; Secure', 'theme=dark']);
+  });
+
+  it('M-21: releases write reservation on serialization or onStarting failure so exception handler can recover', async () => {
+    class CustomRecoveryHandler implements IExceptionHandler {
+      async tryHandleAsync(ctx: HttpContext, _error: unknown): Promise<boolean> {
+        await ctx.response.writeJson({ recovery: 'CUSTOM_RECOVERY' }, 599);
+        return true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(CustomRecoveryHandler);
+    app = builder.build();
+
+    // 1. Serialization error before commit (BigInt serialization in JSON)
+    app.mapGet('/bad-json-write', () => {
+      return Results.json({ value: 1n });
+    });
+
+    // 2. onStarting callback failure
+    app.mapGet('/bad-starting-write', (ctx) => {
+      ctx.response.onStarting(() => {
+        throw new Error('ON_STARTING_FAILED');
+      });
+      return Results.text('hello');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    // Case 1: BigInt json error -> Custom handler recovers with 599
+    const resJson = await fetch(`http://127.0.0.1:${port}/bad-json-write`);
+    assert.strictEqual(resJson.status, 599);
+    const bodyJson = await resJson.json() as any;
+    assert.strictEqual(bodyJson.recovery, 'CUSTOM_RECOVERY');
+
+    // Case 2: onStarting failure -> Custom handler recovers with 599
+    const resStarting = await fetch(`http://127.0.0.1:${port}/bad-starting-write`);
+    assert.strictEqual(resStarting.status, 599);
+    const bodyStarting = await resStarting.json() as any;
+    assert.strictEqual(bodyStarting.recovery, 'CUSTOM_RECOVERY');
+  });
 });

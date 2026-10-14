@@ -108,16 +108,7 @@ export class WatchSupervisor {
 
     // Watch source directories
     for (const dir of dirs) {
-      try {
-        const watcher = fs.watch(dir, { recursive: true }, (_event, filename) => {
-          if (filename && !filename.includes('.git') && !filename.includes('dist')) {
-            onFileChanged(false);
-          }
-        });
-        this.watchers.push(watcher);
-      } catch {
-        // Fallback for systems without recursive watch
-      }
+      this.watchDirectoryRecursive(dir, onFileChanged);
     }
 
     // Watch manifest files
@@ -131,6 +122,63 @@ export class WatchSupervisor {
         // ignore if deleted
       }
     }
+  }
+
+  private watchDirectoryRecursive(dir: string, onFileChanged: (isManifest: boolean) => void): void {
+    try {
+      const watcher = fs.watch(dir, { recursive: true }, (_event, filename) => {
+        if (filename && !filename.includes('.git') && !filename.includes('dist') && !filename.includes('node_modules')) {
+          onFileChanged(false);
+        }
+      });
+      this.watchers.push(watcher);
+    } catch {
+      // Fallback for systems without recursive watch (e.g. Linux on Node < 19)
+      this.watchDirectorySubtree(dir, onFileChanged);
+    }
+  }
+
+  private watchDirectorySubtree(dir: string, onFileChanged: (isManifest: boolean) => void): void {
+    const addWatcher = (subDir: string) => {
+      try {
+        const watcher = fs.watch(subDir, (_event, filename) => {
+          if (filename) {
+            const fullPath = path.join(subDir, filename);
+            if (!filename.includes('.git') && !filename.includes('dist') && !filename.includes('node_modules')) {
+              try {
+                if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+                  // A new subdirectory was created, watch it
+                  addWatcher(fullPath);
+                }
+              } catch {}
+              onFileChanged(false);
+            }
+          } else {
+            onFileChanged(false);
+          }
+        });
+        this.watchers.push(watcher);
+      } catch {}
+    };
+
+    const walk = (currentDir: string) => {
+      addWatcher(currentDir);
+      try {
+        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (
+            entry.isDirectory() &&
+            entry.name !== '.git' &&
+            entry.name !== 'node_modules' &&
+            entry.name !== 'dist'
+          ) {
+            walk(path.join(currentDir, entry.name));
+          }
+        }
+      } catch {}
+    };
+
+    walk(dir);
   }
 
   private closeWatchers(): void {
@@ -215,7 +263,11 @@ export class WatchSupervisor {
     }
   }
 
-  private async stopChildProcess(): Promise<void> {
+  public setChildProcessForTesting(child: ChildProcess): void {
+    this.childProcess = child;
+  }
+
+  public async stopChildProcess(killTimeoutMs: number = 2000): Promise<void> {
     if (!this.childProcess) {
       return;
     }
@@ -224,23 +276,54 @@ export class WatchSupervisor {
     this.childProcess = undefined;
 
     return new Promise<void>((resolve) => {
-      if (child.killed || child.exitCode !== null) {
+      let isExited = child.exitCode !== null || child.signalCode !== null;
+      if (isExited) {
         return resolve();
       }
 
-      child.kill('SIGTERM');
+      let timeout: NodeJS.Timeout | undefined;
+      let forceKillTimeout: NodeJS.Timeout | undefined;
 
-      const timeout = setTimeout(() => {
-        if (!child.killed && child.exitCode === null) {
-          child.kill('SIGKILL');
+      const onExit = () => {
+        if (!isExited) {
+          isExited = true;
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+          }
+          if (forceKillTimeout) {
+            clearTimeout(forceKillTimeout);
+            forceKillTimeout = undefined;
+          }
+          resolve();
         }
-        resolve();
-      }, 2000);
+      };
 
-      child.once('close', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+      child.once('exit', onExit);
+      child.once('close', onExit);
+
+      // 1. Try graceful SIGTERM
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // Child might have already exited
+      }
+
+      // 2. Fallback to SIGKILL if child ignores SIGTERM after killTimeoutMs
+      timeout = setTimeout(() => {
+        if (!isExited) {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // Child might have already exited
+          }
+          // Safety fallback: ensure promise resolves even if exit event doesn't fire
+          forceKillTimeout = setTimeout(() => {
+            onExit();
+          }, 500);
+          forceKillTimeout.unref();
+        }
+      }, killTimeoutMs);
     });
   }
 
@@ -292,6 +375,14 @@ export class WatchSupervisor {
     child.on('error', (err) => {
       console.error(`[TSNX Watch] Error executing process:`, err);
     });
+  }
+
+  watchDirectorySubtreeForTesting(dir: string, onFileChanged: (isManifest: boolean) => void): void {
+    this.watchDirectorySubtree(dir, onFileChanged);
+  }
+
+  closeWatchersForTesting(): void {
+    this.closeWatchers();
   }
 }
 

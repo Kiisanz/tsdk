@@ -72,18 +72,30 @@ export class EndpointFilterPipeline {
       }
 
       const resolvedInstance: IEndpointFilter = new (filterItem as any)();
-      return await resolvedInstance.invokeAsync(ctx, next);
+      try {
+        return await resolvedInstance.invokeAsync(ctx, next);
+      } finally {
+        await disposeFilter(resolvedInstance);
+      }
     }
 
     // 3. Factory function or inline filter function
     if (typeof filterItem === 'function') {
-      // Check if it's a factory function (sp) => IEndpointFilter
+      // Check if it's a factory function (sp) => IEndpointFilter or () => IEndpointFilter
       // Inline filter functions take (context, next) -> length >= 2
-      // Factory functions take (sp) -> length === 1
-      if (filterItem.length === 1) {
-        const instance = (filterItem as any)(ctx.httpContext.services);
+      // Factory functions take (sp) -> length === 1 or () -> length === 0
+      if (filterItem.length <= 1) {
+        const sp = ctx.httpContext.services;
+        const instance = (filterItem as any)(sp);
         if (instance && typeof instance.invokeAsync === 'function') {
-          return await instance.invokeAsync(ctx, next);
+          const isOwnedByContainer = isContainerOwned(sp, instance);
+          try {
+            return await instance.invokeAsync(ctx, next);
+          } finally {
+            if (!isOwnedByContainer) {
+              await disposeFilter(instance);
+            }
+          }
         }
       }
 
@@ -92,6 +104,32 @@ export class EndpointFilterPipeline {
     }
 
     throw new Error(`Unsupported endpoint filter: ${String(filterItem)}`);
+  }
+}
+
+function isContainerOwned(sp: any, instance: any): boolean {
+  if (!sp || !instance || typeof instance !== 'object') {
+    return false;
+  }
+  if (typeof sp.isOwned === 'function') {
+    return sp.isOwned(instance);
+  }
+  if (sp.serviceProvider && typeof sp.serviceProvider.isOwned === 'function') {
+    return sp.serviceProvider.isOwned(instance);
+  }
+  return false;
+}
+
+async function disposeFilter(instance: any): Promise<void> {
+  if (!instance || typeof instance !== 'object') {
+    return;
+  }
+  if (typeof instance[Symbol.asyncDispose] === 'function') {
+    await instance[Symbol.asyncDispose]();
+  } else if (typeof instance[Symbol.dispose] === 'function') {
+    instance[Symbol.dispose]();
+  } else if (typeof instance.dispose === 'function') {
+    await instance.dispose();
   }
 }
 

@@ -1,7 +1,7 @@
 import { BindingErrorEntry, RequestBindingException } from './binding-error.js';
-import { inspectField } from './modifiers.js';
+import { isArrayDescriptor, isNullable, isOptional } from './modifiers.js';
 import { parseIso8601Date } from './parsers.js';
-import { BindingSchema, Infer } from './types.js';
+import { BindingSchema, Infer, SchemaField } from './types.js';
 
 export function bindBody<T extends BindingSchema>(
   schema: T,
@@ -28,83 +28,12 @@ export function bindBody<T extends BindingSchema>(
       continue;
     }
 
-    const meta = inspectField(field);
-    const hasProp = Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined;
-    const value = record[key];
+    const hasProp = Object.prototype.hasOwnProperty.call(record, key);
+    const value = hasProp ? record[key] : undefined;
 
-    // 1. Missing / undefined handling
-    if (!hasProp) {
-      if (!meta.isOptional) {
-        errors.push({
-          source: 'body',
-          path: key,
-          message: `Field '${key}' is required`,
-        });
-      }
-      continue;
-    }
-
-    // 2. Null handling
-    if (value === null) {
-      if (!meta.isNullable) {
-        errors.push({
-          source: 'body',
-          path: key,
-          message: `Field '${key}' cannot be null`,
-        });
-      } else {
-        result[key] = null;
-      }
-      continue;
-    }
-
-    // 3. Array handling
-    if (meta.isArray) {
-      if (!Array.isArray(value)) {
-        errors.push({
-          source: 'body',
-          path: key,
-          message: `Field '${key}' must be an array, received ${typeof value}`,
-        });
-        continue;
-      }
-
-      const arrResult: any[] = [];
-      let arrayHasError = false;
-
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i];
-        const itemPath = `${key}[${i}]`;
-
-        const bindRes = bindJsonScalarOrNested(meta.innerType, item, itemPath);
-        if (bindRes.success) {
-          arrResult.push(bindRes.value);
-        } else {
-          errors.push({
-            source: 'body',
-            path: itemPath,
-            message: bindRes.error,
-          });
-          arrayHasError = true;
-        }
-      }
-
-      if (!arrayHasError) {
-        result[key] = arrResult;
-      }
-      continue;
-    }
-
-    // 4. Scalar or Nested Object handling
-    const bindRes = bindJsonScalarOrNested(meta.innerType, value, key);
-    if (bindRes.success) {
-      result[key] = bindRes.value;
-    } else {
-      errors.push({
-        source: 'body',
-        path: key,
-        message: bindRes.error,
-      });
+    const res = bindFieldRecursive(field, value, key, errors);
+    if (res.success && !res.omitted) {
+      result[key] = res.value;
     }
   }
 
@@ -113,6 +42,90 @@ export function bindBody<T extends BindingSchema>(
   }
 
   return result as Infer<T>;
+}
+
+function bindFieldRecursive(
+  field: SchemaField,
+  value: unknown,
+  path: string,
+  errors: BindingErrorEntry[],
+): { success: boolean; value: any; omitted?: boolean } {
+  // 1. Optional modifier
+  if (isOptional(field)) {
+    if (value === undefined) {
+      return { success: true, value: undefined, omitted: true };
+    }
+    return bindFieldRecursive(field.inner, value, path, errors);
+  }
+
+  // 2. Nullable modifier
+  if (isNullable(field)) {
+    if (value === null) {
+      return { success: true, value: null };
+    }
+    return bindFieldRecursive(field.inner, value, path, errors);
+  }
+
+  // Missing/undefined on required field
+  if (value === undefined) {
+    errors.push({
+      source: 'body',
+      path,
+      message: `Field '${path}' is required`,
+    });
+    return { success: false, value: undefined };
+  }
+
+  // Null on non-nullable field
+  if (value === null) {
+    errors.push({
+      source: 'body',
+      path,
+      message: `Field '${path}' cannot be null`,
+    });
+    return { success: false, value: undefined };
+  }
+
+  // 3. Array modifier
+  if (isArrayDescriptor(field)) {
+    if (!Array.isArray(value)) {
+      errors.push({
+        source: 'body',
+        path,
+        message: `Field '${path}' must be an array, received ${typeof value}`,
+      });
+      return { success: false, value: undefined };
+    }
+
+    const arrResult: any[] = [];
+    let arrayHasError = false;
+
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      const itemPath = `${path}[${i}]`;
+      const res = bindFieldRecursive(field.inner, item, itemPath, errors);
+      if (res.success) {
+        arrResult.push(res.value);
+      } else {
+        arrayHasError = true;
+      }
+    }
+
+    return arrayHasError ? { success: false, value: undefined } : { success: true, value: arrResult };
+  }
+
+  // 4. Scalar or Nested Object handling
+  const bindRes = bindJsonScalarOrNested(field, value, path);
+  if (bindRes.success) {
+    return { success: true, value: bindRes.value };
+  } else {
+    errors.push({
+      source: 'body',
+      path,
+      message: bindRes.error,
+    });
+    return { success: false, value: undefined };
+  }
 }
 
 function bindJsonScalarOrNested(

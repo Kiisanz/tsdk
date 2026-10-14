@@ -1,7 +1,7 @@
 import { IConfiguration } from '../config/types.js';
 import { IServiceProviderRoot } from '../di/types.js';
 import { HostedService } from '../hosted-services/types.js';
-import { HostLifecycleCoordinator } from '../lifecycle/host-lifetime.js';
+import { HostLifecycleCoordinator, HostApplicationLifetime } from '../lifecycle/host-lifetime.js';
 import { HostApplicationBuilder } from './host-application-builder.js';
 import { IHost } from './types.js';
 
@@ -17,6 +17,9 @@ export class AppHost implements IHost {
   private state = HostState.Created;
   private startPromise?: Promise<void>;
   private stopPromise?: Promise<void>;
+  private isDisposed = false;
+  private disposePromise?: Promise<void>;
+  private hasFatalExecutionError = false;
   private fatalExecutionError?: unknown;
 
   constructor(
@@ -25,12 +28,14 @@ export class AppHost implements IHost {
     private readonly hostedServices: readonly HostedService[],
     private readonly coordinator: HostLifecycleCoordinator,
     private readonly startupValidators: readonly (() => void)[] = [],
+    private readonly frameworkCreatedHostedServices?: ReadonlySet<HostedService>,
   ) {
     // 1. BackgroundService failure propagation:
     // If a background service fails after startup, notify the host and trigger shutdown
     for (const service of this.hostedServices) {
       if (typeof (service as any).setErrorCallback === 'function') {
         (service as any).setErrorCallback((err: unknown) => {
+          this.hasFatalExecutionError = true;
           this.fatalExecutionError = err;
           this.coordinator.lifetime.stopApplication();
         });
@@ -44,6 +49,10 @@ export class AppHost implements IHost {
 
   get currentState(): HostState {
     return this.state;
+  }
+
+  get lifetime(): HostApplicationLifetime {
+    return this.coordinator.lifetime;
   }
 
   async start(): Promise<void> {
@@ -68,7 +77,21 @@ export class AppHost implements IHost {
         await this.coordinator.start(this.hostedServices);
         this.state = HostState.Started;
       } catch (err: unknown) {
+        const wasShutdownRequested =
+          this.state === HostState.Stopping ||
+          this.coordinator.lifetime.applicationStopping.aborted;
+
+        // M-13: Clean up coordinator on startup failure (unregisters SIGINT/SIGTERM listeners and aborts applicationStopped)
+        try {
+          await this.coordinator.stop();
+        } catch {
+          // Suppress coordinator stop errors so original startup error is preserved
+        }
+
         this.state = HostState.Stopped;
+        if (wasShutdownRequested && (err as any)?.name === 'AbortError') {
+          return;
+        }
         throw err;
       }
     })();
@@ -77,7 +100,16 @@ export class AppHost implements IHost {
   }
 
   async run(): Promise<void> {
-    await this.start();
+    try {
+      await this.start();
+    } catch (startErr: any) {
+      try {
+        await this.dispose();
+      } catch {
+        // Suppress secondary dispose errors so the original startup error is preserved
+      }
+      throw startErr;
+    }
 
     // Wait until application is stopped
     await new Promise<void>((resolve) => {
@@ -92,33 +124,26 @@ export class AppHost implements IHost {
     await this.dispose();
 
     // Propagate background service failure if one occurred during execution
-    if (this.fatalExecutionError) {
+    if (this.hasFatalExecutionError) {
       throw this.fatalExecutionError;
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(cancellationToken?: AbortSignal): Promise<void> {
     if (this.state === HostState.Stopped) {
+      if (!this.coordinator.lifetime.applicationStopped.aborted) {
+        await this.coordinator.stop(cancellationToken);
+      }
       return;
     }
     if (this.state === HostState.Stopping && this.stopPromise) {
       return this.stopPromise;
     }
 
-    // If starting is in-flight, await start before stopping to maintain consistent state
-    if (this.state === HostState.Starting && this.startPromise) {
-      try {
-        await this.startPromise;
-      } catch {
-        // Startup failed and was already rolled back by coordinator
-        return;
-      }
-    }
-
     this.state = HostState.Stopping;
     this.stopPromise = (async () => {
       try {
-        await this.coordinator.stop();
+        await this.coordinator.stop(cancellationToken);
       } finally {
         this.state = HostState.Stopped;
       }
@@ -128,9 +153,72 @@ export class AppHost implements IHost {
   }
 
   async dispose(): Promise<void> {
-    await this.stop();
-    if (typeof (this.services as any).dispose === 'function') {
-      await (this.services as any).dispose();
+    if (this.isDisposed) {
+      return;
     }
+    if (this.disposePromise) {
+      return this.disposePromise;
+    }
+
+    this.disposePromise = (async () => {
+      const errors: unknown[] = [];
+
+      // 1. Ensure host is stopped first
+      try {
+        await this.stop();
+      } catch (err) {
+        errors.push(err);
+      }
+
+      // Defensive: ensure coordinator is definitely stopped and signal listeners removed
+      try {
+        if (!this.coordinator.lifetime.applicationStopped.aborted) {
+          await this.coordinator.stop();
+        }
+      } catch (err) {
+        errors.push(err);
+      }
+
+      // 2. Dispose framework-created hosted services in reverse order of creation
+      // (Only dispose services that are NOT owned/managed by the DI container)
+      const servicesToDispose = this.hostedServices.filter(
+        (s) =>
+          (!this.frameworkCreatedHostedServices || this.frameworkCreatedHostedServices.has(s)) &&
+          !(this.services as any).isOwned?.(s),
+      );
+
+      for (const service of [...servicesToDispose].reverse()) {
+        try {
+          if (typeof (service as any)[Symbol.asyncDispose] === 'function') {
+            await (service as any)[Symbol.asyncDispose]();
+          } else if (typeof (service as any)[Symbol.dispose] === 'function') {
+            (service as any)[Symbol.dispose]();
+          } else if (typeof (service as any).dispose === 'function') {
+            await (service as any).dispose();
+          }
+        } catch (err) {
+          errors.push(err);
+        }
+      }
+
+      // 3. Dispose DI service provider
+      try {
+        if (typeof (this.services as any).dispose === 'function') {
+          await (this.services as any).dispose();
+        }
+      } catch (err) {
+        errors.push(err);
+      }
+
+      this.isDisposed = true;
+
+      if (errors.length === 1) {
+        throw errors[0];
+      } else if (errors.length > 1) {
+        throw new AggregateError(errors, 'One or more errors occurred while disposing host');
+      }
+    })();
+
+    return this.disposePromise;
   }
 }

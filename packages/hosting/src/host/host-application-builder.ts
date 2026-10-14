@@ -119,34 +119,82 @@ export class HostApplicationBuilder {
 
     const serviceProvider = this.services.buildServiceProvider(spOptions);
 
-    // Resolve hosted services from DI container
     const hostedServices: HostedService[] = [];
-    const registeredHostedDescriptors = this.services.findAll(HOSTED_SERVICE_TOKEN);
-    for (const desc of registeredHostedDescriptors) {
-      if (desc.instance) {
-        hostedServices.push(desc.instance);
-      } else if (desc.factory) {
-        hostedServices.push(desc.factory(serviceProvider));
-      } else if (desc.implementationType) {
-        if (desc.dependencies && desc.dependencies.length > 0) {
-          const args = desc.dependencies.map((token) => serviceProvider.get(token));
-          hostedServices.push(new desc.implementationType(...args));
-        } else {
-          hostedServices.push(new desc.implementationType());
-        }
-      }
-    }
-
-    // Resolve startup validators (e.g. validateOnStart() options)
-    const startupValidatorDescriptors = this.services.findAll(STARTUP_VALIDATOR_TOKEN);
+    const frameworkCreatedServices = new Set<HostedService>();
     const startupValidators: Array<() => void> = [];
-    for (const desc of startupValidatorDescriptors) {
-      if (desc.factory) {
-        const validator = desc.factory(serviceProvider);
-        if (validator && typeof (validator as any).validate === 'function') {
-          startupValidators.push((validator as any).validate);
+
+    const rollback = () => {
+      // Clean up framework-created hosted services in reverse order
+      const instancesToDispose = [...frameworkCreatedServices].reverse();
+      for (const inst of instancesToDispose) {
+        if (!inst || typeof inst !== 'object') continue;
+        try {
+          if (typeof (inst as any)[Symbol.dispose] === 'function') {
+            (inst as any)[Symbol.dispose]();
+          } else if (typeof (inst as any).dispose === 'function') {
+            const res = (inst as any).dispose();
+            if (res && typeof res.then === 'function') {
+              res.catch(() => {});
+            }
+          } else if (typeof (inst as any)[Symbol.asyncDispose] === 'function') {
+            (inst as any)[Symbol.asyncDispose]().catch(() => {});
+          }
+        } catch {
+          // ignore rollback errors to ensure full cleanup
         }
       }
+
+      // Clean up service provider root and its container-owned instances
+      try {
+        const res = serviceProvider.dispose();
+        if (res && typeof res.then === 'function') {
+          res.catch(() => {});
+        }
+      } catch {
+        // ignore rollback errors to ensure full cleanup
+      }
+    };
+
+    try {
+      // Resolve hosted services from DI container
+      const registeredHostedDescriptors = this.services.findAll(HOSTED_SERVICE_TOKEN);
+      for (const desc of registeredHostedDescriptors) {
+        if (desc.instance) {
+          hostedServices.push(desc.instance);
+        } else if (desc.factory) {
+          const inst = desc.factory(serviceProvider);
+          hostedServices.push(inst);
+          if (!serviceProvider.isOwned || !serviceProvider.isOwned(inst)) {
+            frameworkCreatedServices.add(inst);
+          }
+        } else if (desc.implementationType) {
+          let inst: HostedService;
+          if (desc.dependencies && desc.dependencies.length > 0) {
+            const args = desc.dependencies.map((token) => serviceProvider.get(token));
+            inst = new desc.implementationType(...args);
+          } else {
+            inst = new desc.implementationType();
+          }
+          hostedServices.push(inst);
+          if (!serviceProvider.isOwned || !serviceProvider.isOwned(inst)) {
+            frameworkCreatedServices.add(inst);
+          }
+        }
+      }
+
+      // Resolve startup validators (e.g. validateOnStart() options)
+      const startupValidatorDescriptors = this.services.findAll(STARTUP_VALIDATOR_TOKEN);
+      for (const desc of startupValidatorDescriptors) {
+        if (desc.factory) {
+          const validator = desc.factory(serviceProvider);
+          if (validator && typeof (validator as any).validate === 'function') {
+            startupValidators.push((validator as any).validate);
+          }
+        }
+      }
+    } catch (buildErr) {
+      rollback();
+      throw buildErr;
     }
 
     const logger = this.logging.createLogger('Host');
@@ -158,6 +206,7 @@ export class HostApplicationBuilder {
       hostedServices,
       coordinator,
       startupValidators,
+      frameworkCreatedServices,
     );
   }
 }

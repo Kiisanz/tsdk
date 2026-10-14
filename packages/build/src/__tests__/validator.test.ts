@@ -238,4 +238,79 @@ projects:
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('M-14: rejects cross-project relative import to sibling project sharing a common prefix', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-val-prefix-test-'));
+
+    try {
+      const apiDir = path.join(tmpDir, 'apps', 'Acme.Api');
+      const apiSecretsDir = path.join(tmpDir, 'apps', 'Acme.ApiSecrets');
+      fs.mkdirSync(path.join(apiDir, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(apiSecretsDir, 'src'), { recursive: true });
+
+      // Acme.Api tries to do relative import into sibling Acme.ApiSecrets
+      fs.writeFileSync(
+        path.join(apiDir, 'src', 'main.ts'),
+        `import { secretKey } from '../../Acme.ApiSecrets/src/index.js';`,
+      );
+
+      fs.writeFileSync(
+        path.join(apiSecretsDir, 'src', 'index.ts'),
+        `export const secretKey = 'classified';`,
+      );
+
+      fs.writeFileSync(
+        path.join(apiDir, 'Acme.Api.tsproj'),
+        `
+schemaVersion: 1
+kind: Project
+metadata:
+  name: Acme.Api
+spec:
+  type: webapi
+  references: []
+`,
+      );
+
+      fs.writeFileSync(
+        path.join(apiSecretsDir, 'Acme.ApiSecrets.tsproj'),
+        `
+schemaVersion: 1
+kind: Project
+metadata:
+  name: Acme.ApiSecrets
+spec:
+  type: library
+  package:
+    name: "@acme/api-secrets"
+`,
+      );
+
+      const tswPath = path.join(tmpDir, 'Acme.tswork');
+      fs.writeFileSync(
+        tswPath,
+        `
+schemaVersion: 1
+kind: Workspace
+metadata:
+  name: Acme
+projects:
+  - path: apps/Acme.Api/Acme.Api.tsproj
+  - path: apps/Acme.ApiSecrets/Acme.ApiSecrets.tsproj
+`,
+      );
+
+      const workspace = TsWorkspace.loadSync(tswPath);
+      const validation = ImportValidator.validateWorkspace(workspace);
+
+      assert.equal(validation.valid, false);
+      const diag2102 = validation.diagnostics.find((d) => d.code === 'TSNX2102');
+      assert.ok(diag2102, 'Cross-project relative import must be detected even when sibling project shares directory prefix');
+      assert.equal(diag2102.sourceProject, 'Acme.Api');
+      assert.equal(diag2102.targetProject, 'Acme.ApiSecrets');
+      assert.ok(diag2102.fixSuggestion?.includes('@acme/api-secrets'));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

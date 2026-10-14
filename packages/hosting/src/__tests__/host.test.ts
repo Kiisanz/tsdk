@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { AppHost, BackgroundService } from '../index.js';
+import { AppHost, BackgroundService, HostedService } from '../index.js';
 
 describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
   it('distinguishes start() and run() contracts', async () => {
@@ -146,5 +146,295 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
       () => builder.build(),
       (err: any) => err.name === 'ServiceNotFoundError' || /MissingToken/.test(err.message),
     );
+  });
+
+  it('M-08: hosted service instantiated via addHostedService().toClass() is disposed by host.dispose()', async () => {
+    let stopCount = 0;
+    let disposeCount = 0;
+
+    class DisposableWorker implements HostedService {
+      async start() {}
+      async stop() {
+        stopCount++;
+      }
+      dispose() {
+        disposeCount++;
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addHostedService().toClass(DisposableWorker);
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    assert.equal(stopCount, 1);
+    assert.equal(disposeCount, 1, 'Framework-created hosted service must be disposed on host.dispose()');
+  });
+
+  it('M-08: multiple hosted services are disposed in reverse order and support async disposal', async () => {
+    const events: string[] = [];
+
+    class WorkerA implements HostedService {
+      async start() {}
+      async stop() {}
+      async [Symbol.asyncDispose]() {
+        events.push('dispose-a');
+      }
+    }
+
+    class WorkerB implements HostedService {
+      async start() {}
+      async stop() {}
+      dispose() {
+        events.push('dispose-b');
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addHostedService().toClass(WorkerA);
+    builder.services.addHostedService().toClass(WorkerB);
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    // Reverse order of creation: B then A
+    assert.deepEqual(events, ['dispose-b', 'dispose-a']);
+  });
+
+  it('M-11: app.run() rejects when hosted service startup throws an error', async () => {
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+
+    builder.addHostedService(() => ({
+      async start() {
+        throw new Error('STARTUP_SENTINEL');
+      },
+      async stop() {},
+    }));
+
+    const app = builder.build();
+
+    await assert.rejects(
+      () => app.run(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, 'STARTUP_SENTINEL');
+        return true;
+      },
+    );
+  });
+
+  it('M-11: app.run() rejects when startup validator fails', async () => {
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+
+    const OptionToken = Symbol('OptionToken');
+    builder.services.configure(OptionToken as any)
+      .validate(() => false, 'INVALID_CONFIG_SENTINEL')
+      .validateOnStart();
+
+    const app = builder.build();
+
+    await assert.rejects(
+      () => app.run(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('INVALID_CONFIG_SENTINEL'));
+        return true;
+      },
+    );
+  });
+
+  it('M-12: hosted service resolved from DI via factory is disposed only once by container, not twice', async () => {
+    let disposeCount = 0;
+
+    class DiManagedWorker implements HostedService {
+      async start() {}
+      async stop() {}
+      dispose() {
+        disposeCount++;
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addSingleton(DiManagedWorker).toClass(DiManagedWorker);
+    builder.addHostedService((sp) => sp.get(DiManagedWorker));
+
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    assert.equal(disposeCount, 1, 'Service owned by DI must only be disposed once by container');
+  });
+
+  it('M-13: startup failure in hosted service unregisters signal listeners and aborts applicationStopped', async () => {
+    const initialSigint = process.listenerCount('SIGINT');
+    const initialSigterm = process.listenerCount('SIGTERM');
+
+    const builder = AppHost.createBuilder();
+    // Default registers signal handlers
+    builder.addHostedService(() => ({
+      async start() {
+        throw new Error('STARTUP_FAIL');
+      },
+      async stop() {},
+    }));
+
+    const app = builder.build();
+    await assert.rejects(() => app.run());
+
+    assert.equal(app.currentState, 'stopped');
+    assert.equal(app.lifetime?.applicationStopped.aborted, true);
+    assert.equal(process.listenerCount('SIGINT'), initialSigint, 'SIGINT listeners must return to baseline');
+    assert.equal(process.listenerCount('SIGTERM'), initialSigterm, 'SIGTERM listeners must return to baseline');
+  });
+
+  it('M-13: multiple failed startup cycles (12x) do not accumulate signal listeners', async () => {
+    const initialSigint = process.listenerCount('SIGINT');
+    const initialSigterm = process.listenerCount('SIGTERM');
+
+    for (let i = 0; i < 12; i++) {
+      const builder = AppHost.createBuilder();
+      const OptionToken = Symbol(`OptionToken-${i}`);
+      builder.services.configure(OptionToken as any)
+        .validate(() => false, 'FAILED_OPTIONS')
+        .validateOnStart();
+
+      const app = builder.build();
+      await assert.rejects(() => app.run());
+
+      assert.equal(app.currentState, 'stopped');
+      assert.equal(app.lifetime?.applicationStopped.aborted, true);
+    }
+
+    assert.equal(process.listenerCount('SIGINT'), initialSigint, 'No SIGINT listeners must leak after 12 failed cycles');
+    assert.equal(process.listenerCount('SIGTERM'), initialSigterm, 'No SIGTERM listeners must leak after 12 failed cycles');
+  });
+
+  it('M-18: in-flight shutdown is awaited before disposal proceeds', async () => {
+    const builder = AppHost.createBuilder();
+    const events: string[] = [];
+
+    builder.addHostedService(() => ({
+      async start() {},
+      async stop() {
+        events.push('stop-begins');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        events.push('stop-ends');
+      },
+    }));
+
+    const app = builder.build();
+    await app.start();
+
+    // stopApplication initiates background shutdown
+    app.lifetime!.stopApplication();
+
+    // concurrently call dispose
+    await app.dispose();
+
+    events.push('disposed');
+
+    assert.deepEqual(events, ['stop-begins', 'stop-ends', 'disposed']);
+    assert.equal(app.lifetime!.applicationStopped.aborted, true);
+  });
+
+  it('M-19: cancellation of background service via stoppingToken during normal shutdown does not reject app.run()', async () => {
+    const builder = AppHost.createBuilder();
+
+    class CleanWorker extends BackgroundService {
+      async execute(stoppingToken: AbortSignal): Promise<void> {
+        await new Promise<void>((_resolve, reject) => {
+          stoppingToken.addEventListener('abort', () => {
+            const err = new DOMException('The operation was aborted', 'AbortError');
+            reject(err);
+          });
+        });
+      }
+    }
+
+    builder.addHostedService(() => new CleanWorker());
+    const app = builder.build();
+
+    const runPromise = app.run();
+
+    // Give worker time to start
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Stop application normally
+    await app.stop();
+
+    // app.run() must resolve cleanly without rejecting on AbortError
+    await runPromise;
+    assert.equal(app.currentState, 'stopped');
+  });
+
+  it('L-02: background worker failure with falsy values (0, empty string, null) rejects run()', async () => {
+    for (const falsyVal of [0, '', null]) {
+      const builder = AppHost.createBuilder();
+
+      class FalsyWorker extends BackgroundService {
+        async execute(): Promise<void> {
+          await new Promise((r) => setTimeout(r, 10));
+          throw falsyVal;
+        }
+      }
+
+      builder.addHostedService(() => new FalsyWorker());
+      const app = builder.build();
+
+      try {
+        await app.run();
+        assert.fail(`Expected run() to reject for falsy value: ${String(falsyVal)}`);
+      } catch (err) {
+        assert.equal(err, falsyVal);
+      }
+    }
+  });
+
+  it('M-20: factory failure during build() triggers rollback disposal of earlier instances', () => {
+    const builder = AppHost.createBuilder();
+    let service1Disposed = false;
+    let singletonDisposed = false;
+
+    const MySingleton = Symbol('MySingleton');
+    builder.services.addSingleton(MySingleton as any, () => ({
+      name: 'singleton',
+      dispose() {
+        singletonDisposed = true;
+      },
+    }));
+
+    // Service 1 resolves singleton and is disposable
+    builder.addHostedService((sp) => {
+      sp.get(MySingleton as any);
+      return {
+        async start() {},
+        async stop() {},
+        dispose() {
+          service1Disposed = true;
+        },
+      };
+    });
+
+    // Service 2 throws during construction
+    builder.addHostedService(() => {
+      throw new Error('BUILD_FACTORY_SENTINEL');
+    });
+
+    assert.throws(
+      () => builder.build(),
+      (err: any) => err.message === 'BUILD_FACTORY_SENTINEL',
+    );
+
+    assert.equal(service1Disposed, true, 'Earlier hosted service must be disposed on build failure');
+    assert.equal(singletonDisposed, true, 'Earlier resolved singletons in container must be disposed on build failure');
   });
 });

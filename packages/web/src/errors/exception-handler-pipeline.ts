@@ -72,7 +72,27 @@ export class ExceptionHandlerPipeline {
       let handlerInstance: IExceptionHandler | undefined;
       const startedBefore = ctx.response.hasStarted;
       const statusBefore = ctx.response.statusCode;
-      const headerNamesBefore = new Set(ctx.response.raw.getHeaderNames());
+      // Deep snapshot of headers (cloning arrays to prevent in-place mutation bypass)
+      const headersBefore: Record<string, string | number | string[] | undefined> = {};
+      for (const [name, val] of Object.entries(ctx.response.raw.getHeaders())) {
+        headersBefore[name] = Array.isArray(val) ? [...val] : val;
+      }
+
+      const restoreResponseState = () => {
+        if (ctx.response.hasStarted) return;
+        // 1. Remove all headers currently present on response
+        for (const name of ctx.response.raw.getHeaderNames()) {
+          ctx.response.removeHeader(name);
+        }
+        // 2. Re-apply the exact snapshot of original headers
+        for (const [name, val] of Object.entries(headersBefore)) {
+          if (val !== undefined) {
+            ctx.response.setHeader(name, Array.isArray(val) ? [...val] : (val as any));
+          }
+        }
+        // 3. Restore status code
+        ctx.response.statusCode = statusBefore;
+      };
 
       try {
         handlerInstance = this.resolveHandler(ctx, item);
@@ -109,16 +129,14 @@ export class ExceptionHandlerPipeline {
               return;
             }
 
-            // If response has not started, clean up any headers or status code mutated by the handler
-            for (const name of ctx.response.raw.getHeaderNames()) {
-              if (!headerNamesBefore.has(name)) {
-                ctx.response.removeHeader(name);
-              }
-            }
-            ctx.response.statusCode = statusBefore;
+            // Restore complete response state (status + all original headers)
+            restoreResponseState();
           }
         }
       } catch (handlerErr: unknown) {
+        // Restore response state before falling back so handler mutations don't pollute fallback 500
+        restoreResponseState();
+
         // A custom exception handler threw an error!
         // Robust Failure Handling: Log original error, log handler failure, avoid loops, invoke fallback 500
         if (this.logger) {
@@ -211,7 +229,11 @@ export class ExceptionHandlerPipeline {
           }
         }
         if (item.factory) {
-          return item.factory(ctx.services);
+          const instance = item.factory(ctx.services);
+          if (instance && (ctx.services as any).ownedInstances && !(ctx.services as any).ownedInstances.includes(instance)) {
+            (ctx.services as any).ownedInstances.push(instance);
+          }
+          return instance;
         }
       }
       if (item.implementationType) {

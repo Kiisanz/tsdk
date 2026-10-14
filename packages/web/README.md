@@ -16,6 +16,20 @@ High-performance HTTP Web API framework for TSNX, powered by Node.js native `nod
 npm install @tsnx/web @tsnx/hosting
 ```
 
+## Module Compatibility (ESM & CommonJS)
+
+TSNX packages are distributed as pure ES Modules (`"type": "module"`).
+
+- **ESM Projects** (Recommended): Use standard `import` syntax:
+  ```typescript
+  import { WebApplication, Results } from '@tsnx/web';
+  ```
+- **CommonJS Projects**: Because TSNX is pure ESM, use dynamic `import()`:
+  ```javascript
+  const { WebApplication, Results } = await import('@tsnx/web');
+  ```
+  Synchronous `require('@tsnx/web')` is not supported in CommonJS runtimes without a bundler.
+
 ## Quick Example
 
 ```typescript

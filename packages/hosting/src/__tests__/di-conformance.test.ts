@@ -690,4 +690,128 @@ describe('TSNX v0.2 DI Architecture: Conformance Test Suite', () => {
       );
     });
   });
+
+  // =========================================================================
+  // Area 9: Audit Phase 2 Remediations (H-01 & M-01)
+  // =========================================================================
+  describe('Area 9: Audit Phase 2 Remediations (H-01 & M-01)', () => {
+    it('H-01: prevents singleton from capturing scoped service when resolved from child scope (factory)', () => {
+      const REQUEST_CTX = createToken<{ user: string }>('RequestContext');
+      const CACHE_SVC = createToken<{ request: any }>('CacheService');
+
+      const services = new ServiceCollection();
+      services.addScoped(REQUEST_CTX).toFactory(() => ({ user: 'alice' }));
+      services.addSingleton(CACHE_SVC).toFactory((sp) => ({
+        request: sp.get(REQUEST_CTX),
+      }));
+
+      const root = services.buildServiceProvider({ validateScopes: true });
+      const scopeA = root.createScope();
+
+      // Attempting to resolve the singleton for the first time from scopeA MUST throw CaptiveDependencyError
+      assert.throws(
+        () => scopeA.get(CACHE_SVC),
+        (err: unknown) => {
+          assert.ok(err instanceof CaptiveDependencyError);
+          return true;
+        },
+      );
+    });
+
+    it('H-01: prevents singleton from capturing scoped service transitively through transient dependency', () => {
+      const SCOPED_SVC = createToken<{ id: string }>('ScopedSvc');
+      const TRANSIENT_HELPER = createToken<{ scoped: any }>('TransientHelper');
+      const SINGLETON_MGR = createToken<{ helper: any }>('SingletonMgr');
+
+      class ScopedSvc { id = 'tenant-1'; }
+      class TransientHelper { constructor(public scoped: ScopedSvc) {} }
+      class SingletonMgr { constructor(public helper: TransientHelper) {} }
+
+      const services = new ServiceCollection();
+      services.addScoped(SCOPED_SVC).toClass(ScopedSvc);
+      services.addTransient(TRANSIENT_HELPER).toClass(TransientHelper, SCOPED_SVC);
+      services.addSingleton(SINGLETON_MGR).toClass(SingletonMgr, TRANSIENT_HELPER);
+
+      // validateOnBuild detects the transitive captive dependency
+      assert.throws(
+        () => services.buildServiceProvider({ validateOnBuild: true }),
+        (err: unknown) => {
+          assert.ok(err instanceof CaptiveDependencyError);
+          return true;
+        },
+      );
+
+      // Runtime resolution from scope also fails
+      const root = services.buildServiceProvider();
+      const scope = root.createScope();
+      assert.throws(
+        () => scope.get(SINGLETON_MGR),
+        (err: unknown) => {
+          assert.ok(err instanceof CaptiveDependencyError);
+          return true;
+        },
+      );
+    });
+
+    it('M-01: disposal exception in one service does NOT halt cleanup of other services, and is idempotent', async () => {
+      const log: string[] = [];
+
+      class SvcA {
+        dispose() {
+          log.push('A');
+        }
+      }
+
+      class SvcB {
+        dispose() {
+          log.push('B');
+          throw new Error('B failed to dispose');
+        }
+      }
+
+      class SvcC {
+        async [Symbol.asyncDispose]() {
+          log.push('C');
+        }
+      }
+
+      const services = new ServiceCollection();
+      const A = createToken<SvcA>('A');
+      const B = createToken<SvcB>('B');
+      const C = createToken<SvcC>('C');
+
+      services.addScoped(A).toClass(SvcA);
+      services.addScoped(B).toClass(SvcB);
+      services.addScoped(C).toClass(SvcC);
+
+      const root = services.buildServiceProvider();
+      const scope = root.createScope();
+
+      // Resolve in order: A, B, C
+      scope.get(A);
+      scope.get(B);
+      scope.get(C);
+
+      // Disposal in reverse creation order: C, B, A.
+      // Even though B throws, A MUST still be disposed!
+      let thrownError: any;
+      try {
+        await scope.dispose();
+      } catch (err) {
+        thrownError = err;
+      }
+
+      assert.ok(thrownError, 'dispose() should throw an aggregate error when cleanup fails');
+      assert.ok(thrownError instanceof AggregateError);
+      assert.strictEqual(thrownError.errors.length, 1);
+      assert.strictEqual(thrownError.errors[0].message, 'B failed to dispose');
+
+      // Verify all services were called in reverse order
+      assert.deepStrictEqual(log, ['C', 'B', 'A']);
+
+      // Idempotent: calling dispose() a second time does not rethrow or repeat
+      await scope.dispose();
+      assert.deepStrictEqual(log, ['C', 'B', 'A']);
+    });
+  });
 });

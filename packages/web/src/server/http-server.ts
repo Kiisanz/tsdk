@@ -128,6 +128,7 @@ export class HttpServerHostedService implements HostedService {
 
     return new Promise<void>((resolve) => {
       let isDone = false;
+      let serverClosed = false;
       let drainTimeoutTimer: NodeJS.Timeout | undefined;
 
       const finish = () => {
@@ -135,16 +136,40 @@ export class HttpServerHostedService implements HostedService {
           isDone = true;
           if (drainTimeoutTimer) {
             clearTimeout(drainTimeoutTimer);
+            drainTimeoutTimer = undefined;
           }
           signal.removeEventListener('abort', onAbort);
           this.drainResolver = undefined;
+
+          // Force destroy all lingering sockets
+          for (const socket of this.sockets) {
+            socket.destroy();
+          }
+
+          if ((server as any).listening) {
+            try {
+              server.close();
+            } catch {
+              // Ignore if already closing
+            }
+          }
+
+          this.server = undefined;
+          this.sockets.clear();
+          this.activeRequests.clear();
           resolve();
+        }
+      };
+
+      const tryFinish = () => {
+        if (serverClosed && this.activeRequests.size === 0) {
+          finish();
         }
       };
 
       const onAbort = () => {
         // Drain timeout expired or stop signal aborted: forcibly cancel remaining requests
-        const shutdownReason = new DOMException('Server shutdown drain timeout exceeded', 'AbortError');
+        const shutdownReason = signal.reason ?? new DOMException('Server shutdown drain timeout exceeded', 'AbortError');
         for (const reqEntry of this.activeRequests) {
           reqEntry.abortController.abort(shutdownReason);
           if (!reqEntry.res.headersSent) {
@@ -156,12 +181,29 @@ export class HttpServerHostedService implements HostedService {
           }
         }
 
-        // Force destroy all lingering sockets
+        // Force destroy sockets so server can close immediately
         for (const socket of this.sockets) {
           socket.destroy();
         }
+
         finish();
       };
+
+      // 1. Stop accepting new incoming connections immediately
+      try {
+        server.close(() => {
+          serverClosed = true;
+          tryFinish();
+        });
+      } catch {
+        serverClosed = true;
+        tryFinish();
+      }
+
+      // 2. Close idle keep-alive connections immediately
+      if (typeof (server as any).closeIdleConnections === 'function') {
+        (server as any).closeIdleConnections();
+      }
 
       if (signal.aborted) {
         onAbort();
@@ -170,17 +212,7 @@ export class HttpServerHostedService implements HostedService {
 
       signal.addEventListener('abort', onAbort, { once: true });
 
-      // 1. Stop accepting new incoming connections
-      server.close(() => {
-        finish();
-      });
-
-      // 2. Close idle keep-alive connections immediately
-      if (typeof (server as any).closeIdleConnections === 'function') {
-        (server as any).closeIdleConnections();
-      }
-
-      // 3. Graceful drain: wait for in-flight requests or drain timeout
+      // 3. Graceful drain: wait for in-flight requests and their scopes to completely settle
       if (this.activeRequests.size > 0) {
         if (this.logger) {
           this.logger.info(`Waiting for ${this.activeRequests.size} active request(s) to drain (timeout: ${this.shutdownDrainTimeoutMs}ms)...`);
@@ -192,22 +224,16 @@ export class HttpServerHostedService implements HostedService {
           if (this.activeRequests.size === 0) {
             if (drainTimeoutTimer) {
               clearTimeout(drainTimeoutTimer);
+              drainTimeoutTimer = undefined;
             }
-            this.drainResolver = undefined;
-            // Close remaining connections so server.close callback triggers
             if (typeof (server as any).closeIdleConnections === 'function') {
               (server as any).closeIdleConnections();
             }
-            for (const socket of this.sockets) {
-              socket.destroy();
-            }
+            tryFinish();
           }
         };
       } else {
-        // No active requests; close remaining sockets
-        for (const socket of this.sockets) {
-          socket.destroy();
-        }
+        tryFinish();
       }
     });
   }
@@ -330,19 +356,20 @@ export class HttpServerHostedService implements HostedService {
         }
       }
 
-      // 2. Remove from active in-flight requests and check graceful drain
-      this.activeRequests.delete(requestEntry);
-      if (this.activeRequests.size === 0 && this.drainResolver) {
-        this.drainResolver();
-      }
-
-      // 3. Clean up scoped DI services deterministically AFTER handler has finished
+      // 2. Clean up scoped DI services deterministically AFTER handler has finished
       try {
         await requestScope.dispose();
       } catch (scopeErr) {
         if (this.logger) {
           this.logger.error(`Error disposing request scope: ${scopeErr}`);
         }
+      }
+
+      // 3. Remove from active in-flight requests and notify graceful drain
+      // Only after handler execution, onCompleted callbacks, AND scoped DI disposal are completely settled!
+      this.activeRequests.delete(requestEntry);
+      if (this.drainResolver) {
+        this.drainResolver();
       }
     }
   }

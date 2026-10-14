@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -217,6 +218,42 @@ projects:
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it('M-15 & I-01: tests BuildOrchestrator.executeTsc and signal exit mapping', async () => {
+    // 1. Direct execution of executeTsc with valid arguments
+    const tscVersion = await BuildOrchestrator.executeTsc(['--version'], process.cwd());
+    assert.equal(tscVersion.exitCode, 0);
+    assert.ok(tscVersion.output.toLowerCase().includes('version'));
+
+    // 2. Direct unit testing of production parseProcessExit method
+    const sigtermParsed = BuildOrchestrator.parseProcessExit(null, 'SIGTERM', 'some log', 'error log');
+    assert.equal(sigtermParsed.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
+    assert.ok(sigtermParsed.output.includes('Compilation terminated by signal: SIGTERM'));
+
+    const sigintParsed = BuildOrchestrator.parseProcessExit(null, 'SIGINT', '', '');
+    assert.equal(sigintParsed.exitCode, 130, 'Exit code for SIGINT must be 128 + 2 = 130');
+    assert.ok(sigintParsed.output.includes('Compilation terminated by signal: SIGINT'));
+
+    const normalExit = BuildOrchestrator.parseProcessExit(0, null, 'success', '');
+    assert.equal(normalExit.exitCode, 0);
+    assert.equal(normalExit.output, 'success');
+
+    // 3. Integration test with a real spawned process terminated by SIGTERM
+    const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
+      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        resolve(BuildOrchestrator.parseProcessExit(code, signal, stdout, stderr));
+      });
+    });
+
+    assert.equal(result.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
+    assert.ok(result.output.includes('Compilation terminated by signal: SIGTERM'));
   });
 });
 

@@ -26,6 +26,16 @@ export abstract class BackgroundService implements HostedService {
     // Trigger execute in background without blocking start()
     this.executingTaskPromise = this.execute(this.stoppingCts.signal)
       .catch((err: unknown) => {
+        // Exclude expected cancellations when the stopping token has been aborted (e.g. during normal host shutdown)
+        const isCancellation =
+          Boolean(this.stoppingCts?.signal.aborted) &&
+          (err === this.stoppingCts?.signal.reason ||
+            (typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'));
+
+        if (isCancellation) {
+          return;
+        }
+
         this.executionErrorValue = err;
         if (this.errorCallback) {
           this.errorCallback(err);
@@ -43,15 +53,22 @@ export abstract class BackgroundService implements HostedService {
     // Signal cancellation to execute()
     this.stoppingCts?.abort();
 
-    // Wait for execute() to finish or the shutdown signal to abort
+    if (signal.aborted) {
+      return;
+    }
+
+    let onAbort: (() => void) | undefined;
     const abortPromise = new Promise<void>((resolve) => {
-      if (signal.aborted) {
-        resolve();
-      } else {
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      }
+      onAbort = () => resolve();
+      signal.addEventListener('abort', onAbort, { once: true });
     });
 
-    await Promise.race([this.executingTaskPromise, abortPromise]);
+    try {
+      await Promise.race([this.executingTaskPromise, abortPromise]);
+    } finally {
+      if (onAbort) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    }
   }
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getEventListeners } from 'node:events';
 import { describe, it } from 'node:test';
 import { BackgroundService } from '../hosted-services/index.js';
 
@@ -30,5 +31,9 @@ describe('@tsnx/hosting: Hosted Services', () => {
     await worker.stop(stopCts.signal);
 
     assert.equal(stoppedCleanly, true);
+
+    // L-01: Verify abort listener was removed from stop token
+    const listeners = getEventListeners(stopCts.signal, 'abort');
+    assert.equal(listeners.length, 0, 'Abort listener must be cleaned up from stop signal');
   });
 });

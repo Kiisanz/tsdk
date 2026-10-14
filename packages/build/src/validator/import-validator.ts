@@ -100,14 +100,14 @@ export class ImportValidator {
           );
 
           // Check if resolved path escapes the project root directory
-          if (!resolvedRealDir.startsWith(projectRealDir)) {
+          if (!this.isInsideOrEqual(projectRealDir, resolvedRealDir)) {
             // Cross-project relative import!
             let targetProjName: string | undefined;
             let targetPkgName: string | undefined;
             if (workspace) {
               for (const p of workspace.projects) {
                 const pRealDir = this.safeRealpath(p.directory);
-                if (resolvedRealDir.startsWith(pRealDir)) {
+                if (this.isInsideOrEqual(pRealDir, resolvedRealDir)) {
                   targetProjName = p.name;
                   targetPkgName = p.manifest.spec.package?.name;
                   break;
@@ -366,5 +366,16 @@ export class ImportValidator {
     } catch {
       return path.resolve(p);
     }
+  }
+
+  private static isInsideOrEqual(parentDir: string, targetPath: string): boolean {
+    const rel = path.relative(parentDir, targetPath);
+    return (
+      rel === '' ||
+      (rel !== '..' &&
+        !rel.startsWith(`..${path.sep}`) &&
+        !rel.startsWith('../') &&
+        !path.isAbsolute(rel))
+    );
   }
 }

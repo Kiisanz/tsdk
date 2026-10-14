@@ -482,4 +482,129 @@ describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () =>
     assert.strictEqual(closeListeners.includes('onTsnxClose'), false);
     assert.strictEqual(finishListeners.includes('onTsnxFinish'), false);
   });
+
+  // 13. M-04: Graceful shutdown waits for handler async work to complete even after response was sent
+  test('13. M-04: Graceful shutdown waits for handler async work to complete even after response was sent', async () => {
+    let handlerFinished = false;
+    let handlerStartedResolve: () => void;
+    const handlerStartedPromise = new Promise<void>((r) => {
+      handlerStartedResolve = r;
+    });
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', shutdownDrainTimeoutMs: 1000 });
+    app = builder.build();
+
+    app.mapGet('/async-after-response', async (ctx) => {
+      handlerStartedResolve();
+      // Write response
+      await ctx.response.writeText('done', 200);
+      // Simulate post-response async work
+      await new Promise((r) => setTimeout(r, 60));
+      handlerFinished = true;
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    // Send request and consume response
+    const fetchPromise = fetch(`http://127.0.0.1:${port}/async-after-response`);
+    await handlerStartedPromise;
+
+    const res = await fetchPromise;
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(await res.text(), 'done');
+
+    // Trigger shutdown while post-response work is still pending
+    assert.strictEqual(handlerFinished, false);
+    await app.stop();
+
+    // Shutdown MUST have waited for the handler async work to settle!
+    assert.strictEqual(handlerFinished, true);
+    app = undefined;
+  });
+
+  // 14. M-04: Graceful shutdown waits for scoped DI async disposal to complete before host teardown
+  test('14. M-04: Graceful shutdown waits for scoped DI async disposal to complete before host teardown', async () => {
+    const events: string[] = [];
+
+    class SlowDisposableService {
+      async [Symbol.asyncDispose]() {
+        events.push('dispose-start');
+        await new Promise((r) => setTimeout(r, 60));
+        events.push('dispose-end');
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1', shutdownDrainTimeoutMs: 1000 });
+    builder.services.addScoped(SlowDisposableService).toClass(SlowDisposableService);
+    app = builder.build();
+
+    app.mapGet('/scoped-slow-dispose', (ctx) => {
+      // Resolve scoped service so it is tracked in request scope
+      ctx.services.get(SlowDisposableService);
+      return Results.text('ok');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const fetchPromise = fetch(`http://127.0.0.1:${port}/scoped-slow-dispose`);
+    const res = await fetchPromise;
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(await res.text(), 'ok');
+
+    // Trigger shutdown
+    await app.stop();
+
+    // Shutdown MUST NOT complete until async disposal finishes!
+    assert.deepStrictEqual(events, ['dispose-start', 'dispose-end']);
+    app = undefined;
+  });
+
+  // 15. M-06: Shutdown dengan signal yang sudah di-abort tetap menutup server dan membebaskan port
+  test('15. M-06: Shutdown dengan signal yang sudah di-abort tetap menutup server dan membebaskan port', async () => {
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/health', () => Results.text('ok'));
+
+    await app.start();
+    const port = app.listeningPort!;
+    assert.ok(port > 0);
+
+    // Verify server is listening and responding
+    const res = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.strictEqual(res.status, 200);
+
+    // Create an already-aborted signal
+    const abortController = new AbortController();
+    abortController.abort(new DOMException('Pre-aborted shutdown', 'AbortError'));
+
+    // Stop using pre-aborted signal
+    await app.stop(abortController.signal);
+    app = undefined;
+
+    // Verify port is freed: a new server can bind to the exact same port without EADDRINUSE
+    await new Promise<void>((resolve, reject) => {
+      const probeServer = http.createServer();
+      probeServer.once('error', (err) => {
+        probeServer.close();
+        reject(err);
+      });
+      probeServer.listen(port, '127.0.0.1', () => {
+        probeServer.close(() => resolve());
+      });
+    });
+
+    // Also verify fetching the old port fails with connection refused
+    await assert.rejects(
+      async () => {
+        await fetch(`http://127.0.0.1:${port}/health`);
+      },
+      (err: any) => err.name === 'TypeError' || err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED'
+    );
+  });
 });

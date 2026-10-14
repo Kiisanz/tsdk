@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { BuildService } from '@tsnx/build';
 import { TsProject, TsWorkspace } from '@tsnx/core';
@@ -180,22 +181,41 @@ export async function runApp(context: TsdkContext, rawRunArgs: string[]): Promis
       env: { ...process.env },
     });
 
+    let hasExited = false;
+
     const forwardSignal = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        child.kill(sig);
+      if (!hasExited && child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill(sig);
+        } catch {
+          // child might have already terminated
+        }
       }
     };
 
     process.on('SIGINT', forwardSignal);
     process.on('SIGTERM', forwardSignal);
 
+    child.on('exit', () => {
+      hasExited = true;
+    });
+
     child.on('close', (code, sig) => {
+      hasExited = true;
       process.removeListener('SIGINT', forwardSignal);
       process.removeListener('SIGTERM', forwardSignal);
-      resolve(code ?? (sig ? 0 : 0));
+      if (code !== null) {
+        resolve(code);
+      } else if (sig) {
+        const signalNum = (os.constants.signals as Record<string, number>)[sig] ?? 1;
+        resolve(128 + signalNum);
+      } else {
+        resolve(1);
+      }
     });
 
     child.on('error', (err) => {
+      hasExited = true;
       process.removeListener('SIGINT', forwardSignal);
       process.removeListener('SIGTERM', forwardSignal);
       console.error(`[TSNX Error] Failed to launch application:`, err);
