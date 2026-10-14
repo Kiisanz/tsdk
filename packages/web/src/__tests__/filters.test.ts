@@ -12,6 +12,7 @@ import {
   route,
   header,
   context,
+  createToken,
   optional,
   array,
 } from '../index.js';
@@ -100,6 +101,38 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
     const data = await res.json() as any;
     assert.strictEqual(data.actionsSoFar, 1);
     assert.deepStrictEqual(recordedActions, ['before:/audited', 'after:/audited']);
+  });
+
+  test('Class filter with constructor dependencies fails fast when not registered in DI', async () => {
+    class UnregisteredService {}
+
+    class DependentFilter implements IEndpointFilter {
+      // Has 1 constructor dependency but is NOT registered in DI
+      constructor(public readonly dep: UnregisteredService) {}
+
+      public async invokeAsync(
+        ctx: EndpointFilterInvocationContext,
+        next: EndpointFilterDelegate,
+      ) {
+        return await next(ctx);
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Environment=Development']);
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/missing-di', () => Results.text('ok'))
+      .addEndpointFilter(DependentFilter);
+
+    await app.start();
+    const port = app.listeningPort;
+
+    const res = await fetch(`http://127.0.0.1:${port}/missing-di`);
+    assert.strictEqual(res.status, 500);
+    const problem = await res.json() as any;
+    assert.strictEqual(problem.status, 500);
+    assert.ok(problem.detail?.includes("Endpoint filter 'DependentFilter' has constructor dependencies"));
   });
 
   test('Filter short-circuits request by returning HttpResult without calling next', async () => {
@@ -269,7 +302,11 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
   });
 
   test('Declarative binding descriptors (V2 style) with body, service, query, route, header, and context', async () => {
-    class OrderProcessingService {
+    interface IOrderService {
+      process(orderId: string, itemName: string, qty: number, tenant: string): any;
+    }
+
+    class OrderProcessingService implements IOrderService {
       public process(orderId: string, itemName: string, qty: number, tenant: string) {
         return {
           id: `ORD-${orderId}`,
@@ -280,6 +317,9 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
         };
       }
     }
+
+    // Typed token from @tsnx/hosting
+    const ORDER_SERVICE_TOKEN = createToken<IOrderService>('IOrderService');
 
     const OrderItemSchema = {
       item: String,
@@ -296,15 +336,16 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
 
     const builder = WebApplication.createBuilder();
     builder.configureServer({ port: 0, host: '127.0.0.1' });
-    builder.services.addScoped(OrderProcessingService, () => new OrderProcessingService());
+    // Register by typed token
+    builder.services.addScoped(ORDER_SERVICE_TOKEN, () => new OrderProcessingService());
     app = builder.build();
 
-    // Map route with declarative descriptors tuple: [body, service, route, query, header, context]
+    // Map route with declarative descriptors tuple: [body, service(TOKEN), route, query, header, context]
     app.mapPost(
       '/orders/:orderId',
       [
         body(OrderItemSchema),
-        service(OrderProcessingService),
+        service(ORDER_SERVICE_TOKEN),
         route(RouteParamsSchema),
         query(QueryParamsSchema),
         header('x-tenant-id'),
@@ -351,36 +392,58 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
     assert.strictEqual(data.notify, true);
   });
 
-  test('RouteHandlerBuilder allows fluent route chaining', async () => {
+  test('Rejects duplicate body() descriptors at registration time', () => {
+    const builder = WebApplication.createBuilder();
+    app = builder.build();
+
+    const SchemaA = { a: String };
+    const SchemaB = { b: String };
+
+    assert.throws(
+      () => {
+        app!.mapPost('/duplicate-body', [body(SchemaA), body(SchemaB)], () => Results.ok());
+      },
+      (err: any) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('found 2 body() descriptors'));
+        return true;
+      },
+    );
+  });
+
+  test('RouteHandlerBuilder provides metadata, name, display name, and tags', async () => {
     const builder = WebApplication.createBuilder();
     builder.configureServer({ port: 0, host: '127.0.0.1' });
     app = builder.build();
 
-    // Fluent chaining of multiple routes on RouteHandlerBuilder
-    app.mapGet('/route-a', () => Results.text('A'))
+    const routeBuilder = app.mapGet('/products', () => Results.json({ products: [] }))
       .addEndpointFilter(async (ctx, next) => {
-        ctx.httpContext.response.setHeader('X-Route', 'A');
+        ctx.httpContext.response.setHeader('X-Filter', 'yes');
         return await next(ctx);
       })
-      .mapGet('/route-b', () => Results.text('B'))
-      .addEndpointFilter(async (ctx, next) => {
-        ctx.httpContext.response.setHeader('X-Route', 'B');
-        return await next(ctx);
-      })
-      .mapPost('/route-c', () => Results.text('C'));
+      .withName('GetProducts')
+      .withDisplayName('Retrieve list of products')
+      .withTags('Catalog', 'Public')
+      .withMetadata({ rateLimit: 100, requiresAuth: false });
+
+    // Verify RouteHandlerBuilder state
+    assert.strictEqual(routeBuilder.getName(), 'GetProducts');
+    assert.strictEqual(routeBuilder.getDisplayName(), 'Retrieve list of products');
+    assert.deepStrictEqual(routeBuilder.getTags(), ['Catalog', 'Public']);
+    assert.deepStrictEqual(routeBuilder.getMetadata(), { rateLimit: 100, requiresAuth: false });
+
+    // Register second route directly on app
+    app.mapGet('/categories', () => Results.json({ categories: [] }))
+      .withName('GetCategories');
 
     await app.start();
     const port = app.listeningPort;
 
-    const resA = await fetch(`http://127.0.0.1:${port}/route-a`);
-    assert.strictEqual(await resA.text(), 'A');
-    assert.strictEqual(resA.headers.get('x-route'), 'A');
+    const res = await fetch(`http://127.0.0.1:${port}/products`);
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get('x-filter'), 'yes');
 
-    const resB = await fetch(`http://127.0.0.1:${port}/route-b`);
-    assert.strictEqual(await resB.text(), 'B');
-    assert.strictEqual(resB.headers.get('x-route'), 'B');
-
-    const resC = await fetch(`http://127.0.0.1:${port}/route-c`, { method: 'POST' });
-    assert.strictEqual(await resC.text(), 'C');
+    const resCat = await fetch(`http://127.0.0.1:${port}/categories`);
+    assert.strictEqual(resCat.status, 200);
   });
 });

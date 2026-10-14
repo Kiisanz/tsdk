@@ -215,11 +215,21 @@ export class WebApplication {
     handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
     maybeHandler?: (...args: any[]) => any,
   ): RouteHandlerBuilder {
-    const builder = new RouteHandlerBuilder(method, pattern, this);
+    const builder = new RouteHandlerBuilder(method, pattern);
     if (Array.isArray(handlerOrDescriptors)) {
       if (!maybeHandler) {
         throw new Error(`Handler function is required when descriptors are provided for route [${method}] ${pattern}`);
       }
+
+      // Validate at registration time: a route cannot have multiple body() descriptors
+      // because HTTP request stream can only be consumed once.
+      const bodyCount = handlerOrDescriptors.filter(d => d.source === 'body').length;
+      if (bodyCount > 1) {
+        throw new Error(
+          `Invalid route definition for [${method}] ${pattern}: found ${bodyCount} body() descriptors. An endpoint can bind the request body at most once.`
+        );
+      }
+
       this.router.map(method, pattern, maybeHandler, handlerOrDescriptors, builder);
     } else {
       this.router.map(method, pattern, handlerOrDescriptors as (...args: any[]) => any, undefined, builder);
@@ -231,6 +241,13 @@ export class WebApplication {
     if (this.appHost) return;
 
     // Terminal endpoint routing delegate
+    // Execution Flow:
+    // 1. HTTP Middleware (Authentication, logging, request preprocessing, exception handling)
+    // 2. Routing (Endpoint selection & URL parameter extraction)
+    // 3. Declarative Binding (Strictly sequential resolution of body, service, route, query, header, context)
+    // 4. Endpoint Filters (Inspect, transform in-place, or short-circuit arguments)
+    // 5. Endpoint Handler (Execute terminal logic with final context.arguments)
+    // 6. Response Execution (Execute HttpResult to response stream)
     const routingDelegate: RequestDelegate = async (ctx: HttpContext) => {
       const routingResult = this.router.match(ctx.request.method, ctx.request.path);
 
@@ -267,6 +284,7 @@ export class WebApplication {
       ctx.params = routingResult.match.params;
       ctx.request.params = ctx.params;
 
+      // Strictly sequential descriptor resolution to guarantee deterministic stream reading and error ordering
       const descriptors = routingResult.match.descriptors;
       let args: unknown[];
       if (descriptors !== undefined) {

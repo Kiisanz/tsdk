@@ -50,22 +50,32 @@ export class EndpointFilterPipeline {
       return await (filterItem as IEndpointFilter).invokeAsync(ctx, next);
     }
 
-    // 2. Class constructor or function
-    if (typeof filterItem === 'function') {
-      // Check if it's a class implementing IEndpointFilter
-      if (isFilterConstructor(filterItem)) {
-        let instance: IEndpointFilter | null | undefined;
-        if (ctx.httpContext.services) {
-          try {
-            instance = ctx.httpContext.services.getOptional<IEndpointFilter>(filterItem as any);
-          } catch {
-            // Fall back to direct instantiation below
-          }
-        }
-        const resolvedInstance: IEndpointFilter = instance ?? new (filterItem as any)();
-        return await resolvedInstance.invokeAsync(ctx, next);
+    // 2. Class constructor
+    if (typeof filterItem === 'function' && isFilterConstructor(filterItem)) {
+      let instance: IEndpointFilter | null | undefined;
+      if (ctx.httpContext.services) {
+        // Resolve via DI directly. If resolution fails (e.g. missing dependency), do NOT catch.
+        instance = ctx.httpContext.services.getOptional<IEndpointFilter>(filterItem as any);
       }
 
+      if (instance) {
+        return await instance.invokeAsync(ctx, next);
+      }
+
+      // If class is not registered in DI, only allow parameterless instantiation.
+      // If constructor expects dependencies (length > 0), fail fast with an explicit error.
+      if (filterItem.length > 0) {
+        throw new Error(
+          `Endpoint filter '${filterItem.name}' has constructor dependencies (expected ${filterItem.length}) but is not registered in the DI container. Register it with 'builder.services.addScoped(${filterItem.name})' or provide a factory.`
+        );
+      }
+
+      const resolvedInstance: IEndpointFilter = new (filterItem as any)();
+      return await resolvedInstance.invokeAsync(ctx, next);
+    }
+
+    // 3. Factory function or inline filter function
+    if (typeof filterItem === 'function') {
       // Check if it's a factory function (sp) => IEndpointFilter
       // Inline filter functions take (context, next) -> length >= 2
       // Factory functions take (sp) -> length === 1

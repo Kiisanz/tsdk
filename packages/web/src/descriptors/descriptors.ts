@@ -1,5 +1,5 @@
 import { BindingSchema, Infer } from '../binding/types.js';
-import { ServiceIdentifier } from '@tsnx/hosting';
+import { ServiceIdentifier, InjectionToken } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { EndpointArgumentDescriptor } from './types.js';
 
@@ -16,13 +16,15 @@ export function body<T extends BindingSchema>(schema: T): EndpointArgumentDescri
 }
 
 /**
- * Resolves a request-scoped or singleton service from the DI container.
+ * Resolves a request-scoped or singleton service from the DI container using a constructor, abstract constructor, or typed symbol token (createToken).
  */
+export function service<T>(token: InjectionToken<T>): EndpointArgumentDescriptor<T>;
+export function service<T = any>(token: ServiceIdentifier<T>): EndpointArgumentDescriptor<T>;
 export function service<T>(token: ServiceIdentifier<T>): EndpointArgumentDescriptor<T> {
   return {
     source: 'service',
     resolveAsync: (ctx: HttpContext) => {
-      return ctx.services.get(token);
+      return ctx.services.get(token as any);
     },
   };
 }
