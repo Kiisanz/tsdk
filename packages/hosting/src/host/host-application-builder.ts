@@ -44,6 +44,38 @@ export class HostApplicationBuilder {
       }
     }
 
+    if (process.env.TSNX_CONTENTROOT) {
+      contentRoot = process.env.TSNX_CONTENTROOT;
+      this.options.contentRootPath = contentRoot;
+    }
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg.startsWith('--contentRoot=') || arg.startsWith('--ContentRoot=')) {
+        contentRoot = arg.slice(arg.indexOf('=') + 1);
+        this.options.contentRootPath = contentRoot;
+      } else if (arg === '--contentRoot' || arg === '--ContentRoot') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          contentRoot = args[i + 1];
+          this.options.contentRootPath = contentRoot;
+        }
+      } else if (arg.startsWith('--contentRootPath=') || arg.startsWith('--ContentRootPath=')) {
+        contentRoot = arg.slice(arg.indexOf('=') + 1);
+        this.options.contentRootPath = contentRoot;
+      } else if (arg === '--contentRootPath' || arg === '--ContentRootPath') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          contentRoot = args[i + 1];
+          this.options.contentRootPath = contentRoot;
+        }
+      } else if (arg.startsWith('--environment=') || arg.startsWith('--Environment=')) {
+        env = arg.slice(arg.indexOf('=') + 1);
+      } else if (arg === '--environment' || arg === '--Environment') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          env = args[i + 1];
+        }
+      }
+    }
+
     // 1. Setup Ordered Configuration Providers:
     // Defaults -> JSON -> Environment Variables -> CLI Arguments
     this.config.addProvider(new MemoryConfigurationProvider({ environment: env }));

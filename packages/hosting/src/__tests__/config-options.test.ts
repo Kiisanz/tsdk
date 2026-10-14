@@ -333,4 +333,189 @@ describe('@tsnx/hosting: Configuration & Options Milestone', () => {
     scope1.dispose();
     scope2.dispose();
   });
+
+  it('preserves nested sibling configuration keys during partial environment and CLI overrides', () => {
+    const envSource: Record<string, string> = {
+      APP_DATABASE__PORT: '5433',
+      APP_DATABASE__POOL__MAX: '30',
+    };
+    const cliArgs = ['--Database:User=superadmin'];
+
+    const config = new Configuration([
+      new MemoryConfigurationProvider({
+        Database: {
+          Host: 'postgres.internal',
+          Port: 5432,
+          User: 'readonly',
+          Pool: {
+            Min: 5,
+            Max: 10,
+            IdleTimeout: 10000,
+          },
+        },
+      }),
+      new EnvironmentVariablesConfigurationProvider('APP_', envSource),
+      new CommandLineConfigurationProvider(cliArgs),
+    ]);
+
+    // Sibling keys preserved:
+    assert.equal(config.getString('Database:Host'), 'postgres.internal');
+    assert.equal(config.getNumber('Database:Pool:Min'), 5);
+    assert.equal(config.getNumber('Database:Pool:IdleTimeout'), 10000);
+
+    // Overridden keys updated:
+    assert.equal(config.getNumber('Database:Port'), 5433);
+    assert.equal(config.getNumber('Database:Pool:Max'), 30);
+    assert.equal(config.getString('Database:User'), 'superadmin');
+  });
+
+  it('guarantees dual-registration contract: direct === wrapped.value from the exact same singleton instance', () => {
+    const builder = new HostApplicationBuilder();
+
+    let buildCount = 0;
+    builder.services
+      .configure(DATABASE_OPTIONS)
+      .configure(() => {
+        buildCount++;
+        return {
+          connectionString: 'postgres://localhost/mydb',
+          maxConnections: 20,
+          ssl: true,
+        };
+      });
+
+    const app = builder.build();
+
+    const optToken = optionsToken<DatabaseOptions>(DATABASE_OPTIONS);
+
+    // Resolve wrapped first
+    const wrapped = app.services.get(optToken);
+    const direct = app.services.get(DATABASE_OPTIONS);
+
+    // Strict identity contract
+    assert.strictEqual(direct, wrapped.value);
+    // Factory and binding only executed once for singleton
+    assert.equal(buildCount, 1);
+  });
+
+  it('supports repeated configure(TOKEN) without overwriting bindings or losing previous validators', () => {
+    const builder = new HostApplicationBuilder();
+
+    builder.configuration.addProvider(
+      new MemoryConfigurationProvider({
+        Database: {
+          ConnectionString: 'postgresql://localhost/app',
+          MaxConnections: 25,
+          Ssl: false,
+        },
+      }),
+    );
+
+    // Module 1 registers section binding and validator 1
+    builder.services
+      .configure(DATABASE_OPTIONS)
+      .bindConfiguration('Database')
+      .validate((opts) => opts.maxConnections > 0, 'Must have positive connections');
+
+    // Module 2 (extension method / separate module) augments configuration and adds validator 2
+    builder.services
+      .configure(DATABASE_OPTIONS)
+      .configure((opts) => {
+        opts.ssl = true;
+      })
+      .validate((opts) => opts.ssl === true, 'SSL must be enabled');
+
+    const app = builder.build();
+    const options = app.services.get(DATABASE_OPTIONS);
+
+    // Value merged from both configure calls:
+    assert.equal(options.connectionString, 'postgresql://localhost/app');
+    assert.equal(options.maxConnections, 25);
+    assert.equal(options.ssl, true);
+
+    // Now test that validator 1 from Module 1 is NOT lost:
+    const invalidBuilder = new HostApplicationBuilder();
+    invalidBuilder.configuration.addProvider(
+      new MemoryConfigurationProvider({
+        Database: { ConnectionString: 'postgresql://localhost/app', MaxConnections: -1 },
+      }),
+    );
+    invalidBuilder.services
+      .configure(DATABASE_OPTIONS)
+      .bindConfiguration('Database')
+      .validate((opts) => opts.maxConnections > 0, 'Validator 1: Must have positive connections');
+
+    invalidBuilder.services
+      .configure(DATABASE_OPTIONS)
+      .configure((opts) => { opts.ssl = true; })
+      .validate((opts) => opts.ssl === true, 'Validator 2: SSL required');
+
+    const invalidApp = invalidBuilder.build();
+    assert.throws(
+      () => invalidApp.services.get(DATABASE_OPTIONS),
+      (err: any) => {
+        assert(err instanceof OptionsValidationError);
+        assert(err.message.includes('Validator 1: Must have positive connections'));
+        return true;
+      },
+    );
+  });
+
+  it('guarantees validateOnStart() aborts host startup BEFORE any hosted services are started', async () => {
+    let serviceStarted = false;
+
+    class MonitoredHostedService {
+      async start(): Promise<void> {
+        serviceStarted = true;
+      }
+      async stop(): Promise<void> {}
+    }
+
+    const builder = new HostApplicationBuilder();
+    builder.addHostedService(() => new MonitoredHostedService());
+
+    builder.services
+      .configure(SERVER_OPTIONS)
+      .configure(() => ({ port: -1, host: 'invalid' }))
+      .validate((opts) => opts.port > 0, 'Port must be positive')
+      .validateOnStart();
+
+    const app = builder.build();
+
+    await assert.rejects(async () => {
+      await app.start();
+    }, OptionsValidationError);
+
+    // Critical invariant: hosted services must NOT have been started!
+    assert.equal(serviceStarted, false);
+  });
+
+  it('resolves contentRoot from CLI arguments and environment variables', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-cli-root-'));
+
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, 'appsettings.json'),
+        JSON.stringify({
+          App: { Title: 'CliRootApp' },
+        }),
+      );
+
+      // 1. Via CLI argument --contentRoot=<path>
+      const builderFromArg = new HostApplicationBuilder([`--contentRoot=${tmpDir}`]);
+      assert.equal(builderFromArg.configuration.getString('App:Title'), 'CliRootApp');
+
+      // 2. Via environment variable TSNX_CONTENTROOT
+      process.env.TSNX_CONTENTROOT = tmpDir;
+      try {
+        const builderFromEnv = new HostApplicationBuilder([]);
+        assert.equal(builderFromEnv.configuration.getString('App:Title'), 'CliRootApp');
+      } finally {
+        delete process.env.TSNX_CONTENTROOT;
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
+
