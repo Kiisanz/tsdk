@@ -36,7 +36,7 @@ export class CommandLineConfigurationProvider implements IConfigurationProvider 
   }
 
   private setDeepValue(obj: Record<string, any>, keyPath: string, value: any): void {
-    const parts = keyPath.split(/[:.]/);
+    const parts = keyPath.replace(/__/g, ':').split(/[:.]/);
     let current = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {

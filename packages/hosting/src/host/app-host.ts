@@ -24,6 +24,7 @@ export class AppHost implements IHost {
     public readonly config: IConfiguration,
     private readonly hostedServices: readonly HostedService[],
     private readonly coordinator: HostLifecycleCoordinator,
+    private readonly startupValidators: readonly (() => void)[] = [],
   ) {
     // 1. BackgroundService failure propagation:
     // If a background service fails after startup, notify the host and trigger shutdown
@@ -59,6 +60,11 @@ export class AppHost implements IHost {
     this.state = HostState.Starting;
     this.startPromise = (async () => {
       try {
+        // Run all startup validators (e.g. options validation from validateOnStart())
+        for (const validator of this.startupValidators) {
+          validator();
+        }
+
         await this.coordinator.start(this.hostedServices);
         this.state = HostState.Started;
       } catch (err: unknown) {

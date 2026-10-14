@@ -11,9 +11,12 @@ import {
   ServiceIdentifier,
   ServiceLifetime,
   ServiceProviderOptions,
+  ServiceToken,
 } from './types.js';
 import { HostedService, HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 import { ServiceProvider } from './service-provider.js';
+import { IOptionsBuilder } from '../options/types.js';
+import { OptionsBuilder } from '../options/options-builder.js';
 
 class BindingBuilder<T> implements IBindingBuilder<T> {
   constructor(
@@ -251,5 +254,9 @@ export class ServiceCollection implements IServiceCollection {
 
   buildServiceProvider(options?: ServiceProviderOptions): IServiceProviderRoot {
     return new ServiceProvider(this.descriptors, true, undefined, undefined, options);
+  }
+
+  configure<T>(token: InjectionToken<T> | ServiceToken<T> | string): IOptionsBuilder<T> {
+    return new OptionsBuilder<T>(this, token);
   }
 }

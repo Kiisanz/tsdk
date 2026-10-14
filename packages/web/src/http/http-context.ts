@@ -249,6 +249,9 @@ export class HttpContext {
   public readonly request: HttpRequest;
   public readonly response: HttpResponse;
   public readonly services: IServiceProvider;
+  public get requestServices(): IServiceProvider {
+    return this.services;
+  }
   public readonly items: Map<string, any> = new Map();
   public params: Record<string, string> = {};
 

@@ -15,3 +15,6 @@ export * from './lifecycle/index.js';
 
 // Host
 export * from './host/index.js';
+
+// Options Pattern
+export * from './options/index.js';

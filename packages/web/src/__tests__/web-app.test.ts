@@ -308,4 +308,55 @@ describe('WebApplication Integration', () => {
       (err: any) => err.name === 'ServiceNotFoundError' || /UnavailableToken/.test(err.message),
     );
   });
+
+  test('WebApplication automatically reads Server:Port and Server:Host from configuration', async () => {
+    // Configure through CLI args without calling configureServer()
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+
+    app = builder.build();
+    app.mapGet('/health', () => Results.ok({ status: 'healthy' }));
+
+    await app.start();
+
+    assert.equal(app.serverOptions.host, '127.0.0.1');
+    assert(app.listeningPort !== undefined && app.listeningPort > 0);
+
+    const res = await fetch(`http://127.0.0.1:${app.listeningPort}/health`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.status, 'healthy');
+  });
+
+  test('WebApplication integrates with Options pattern and validateOnStart', async () => {
+    interface ApiConfig {
+      title: string;
+      version: string;
+    }
+
+    const API_CONFIG = 'ApiConfig';
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Api:Title=MyTask Api', '--Api:Version=v1']);
+
+    builder.services
+      .configure<ApiConfig>(API_CONFIG)
+      .bindConfiguration('Api')
+      .validate((opts) => opts.version === 'v1', 'Version must be v1')
+      .validateOnStart();
+
+    app = builder.build();
+
+    app.mapGet('/info', (ctx) => {
+      const config = ctx.requestServices.get<ApiConfig>(API_CONFIG);
+      return Results.ok(config);
+    });
+
+    await app.start();
+
+    const res = await fetch(`http://127.0.0.1:${app.listeningPort}/info`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.title, 'MyTask Api');
+    assert.equal(body.version, 'v1');
+  });
 });
+

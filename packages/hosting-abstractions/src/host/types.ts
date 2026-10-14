@@ -15,4 +15,13 @@ export interface HostOptions {
   shutdownTimeoutMs?: number;
   registerSignalHandlers?: boolean;
   serviceProviderOptions?: ServiceProviderOptions;
+  contentRootPath?: string;
 }
+
+export interface HostApplicationBuilderSettings {
+  args?: string[];
+  environment?: string;
+  contentRootPath?: string;
+  serviceProviderOptions?: ServiceProviderOptions;
+}
+
