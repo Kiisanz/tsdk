@@ -271,9 +271,9 @@ describe('WebApplication Integration', () => {
     assert.strictEqual(res2.status, 500);
   });
 
-  test('Request timeout aborts slow requests with 408', async () => {
+  test('Request execution timeout aborts slow handlers with 503 Problem Details', async () => {
     const builder = WebApplication.createBuilder();
-    builder.configureServer({ port: 0, host: '127.0.0.1', requestTimeoutMs: 50 });
+    builder.configureServer({ port: 0, host: '127.0.0.1', requestExecutionTimeoutMs: 50 });
     app = builder.build();
 
     app.mapGet('/slow', async () => {
@@ -285,8 +285,12 @@ describe('WebApplication Integration', () => {
     const port = app.listeningPort;
 
     const res = await fetch(`http://127.0.0.1:${port}/slow`);
-    assert.strictEqual(res.status, 408);
-    assert.strictEqual(await res.text(), 'Request Timeout');
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(res.headers.get('Content-Type'), 'application/problem+json; charset=utf-8');
+    const problem = await res.json() as any;
+    assert.strictEqual(problem.type, 'https://tsnx.dev/problems/timeout');
+    assert.strictEqual(problem.status, 503);
+    assert.strictEqual(problem.title, 'Service Unavailable');
   });
 
   test('WebApplicationBuilder exposes serviceProviderOptions and respects validateOnBuild', async () => {

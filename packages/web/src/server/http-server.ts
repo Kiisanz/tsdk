@@ -10,13 +10,24 @@ export interface HttpServerOptions {
   maxBodySizeBytes?: number;
   /** Timeout for receiving initial request headers / body from client (defaults to 30s) */
   requestHeadersTimeoutMs?: number;
-  /** Total maximum duration of a single request, 0 to disable for long streams (defaults to 0 / disabled) */
+  /** Total maximum duration of handler execution, 0 to disable (defaults to 0 / disabled) */
+  requestExecutionTimeoutMs?: number;
+  /** Legacy alias for requestExecutionTimeoutMs */
   requestTimeoutMs?: number;
+  /** Graceful drain timeout when server is stopping (defaults to 10s) */
+  shutdownDrainTimeoutMs?: number;
+}
+
+interface ActiveRequestEntry {
+  abortController: AbortController;
+  res: ServerResponse;
 }
 
 export class HttpServerHostedService implements HostedService {
   private server?: Server;
   private readonly sockets = new Set<Socket>();
+  private readonly activeRequests = new Set<ActiveRequestEntry>();
+  private drainResolver?: () => void;
   private readonly handler: RequestDelegate;
   private rootServices?: IServiceProviderRoot;
   private readonly logger?: ILogger;
@@ -24,7 +35,8 @@ export class HttpServerHostedService implements HostedService {
   private readonly host: string;
   private readonly maxBodySizeBytes: number;
   private readonly requestHeadersTimeoutMs: number;
-  private readonly requestTimeoutMs: number;
+  private readonly requestExecutionTimeoutMs: number;
+  private readonly shutdownDrainTimeoutMs: number;
 
   constructor(
     handler: RequestDelegate,
@@ -38,7 +50,8 @@ export class HttpServerHostedService implements HostedService {
     this.host = options.host ?? '0.0.0.0';
     this.maxBodySizeBytes = options.maxBodySizeBytes ?? 1024 * 1024;
     this.requestHeadersTimeoutMs = options.requestHeadersTimeoutMs ?? 30000;
-    this.requestTimeoutMs = options.requestTimeoutMs ?? 0;
+    this.requestExecutionTimeoutMs = options.requestExecutionTimeoutMs ?? options.requestTimeoutMs ?? 0;
+    this.shutdownDrainTimeoutMs = options.shutdownDrainTimeoutMs ?? 10000;
     this.logger = logger;
   }
 
@@ -68,9 +81,6 @@ export class HttpServerHostedService implements HostedService {
       // headersTimeout protects from slowloris header attacks
       if (this.requestHeadersTimeoutMs > 0) {
         server.headersTimeout = this.requestHeadersTimeoutMs;
-      }
-      if (this.requestTimeoutMs > 0) {
-        server.requestTimeout = this.requestTimeoutMs;
       }
 
       this.server = server;
@@ -114,13 +124,43 @@ export class HttpServerHostedService implements HostedService {
       this.logger.info('Stopping HTTP server and draining connections...');
     }
 
+    const server = this.server;
+
     return new Promise<void>((resolve) => {
-      // Cooperative abort listener to forcibly close idle/remaining sockets if timeout strikes
+      let isDone = false;
+      let drainTimeoutTimer: NodeJS.Timeout | undefined;
+
+      const finish = () => {
+        if (!isDone) {
+          isDone = true;
+          if (drainTimeoutTimer) {
+            clearTimeout(drainTimeoutTimer);
+          }
+          signal.removeEventListener('abort', onAbort);
+          this.drainResolver = undefined;
+          resolve();
+        }
+      };
+
       const onAbort = () => {
+        // Drain timeout expired or stop signal aborted: forcibly cancel remaining requests
+        const shutdownReason = new DOMException('Server shutdown drain timeout exceeded', 'AbortError');
+        for (const reqEntry of this.activeRequests) {
+          reqEntry.abortController.abort(shutdownReason);
+          if (!reqEntry.res.headersSent) {
+            reqEntry.res.statusCode = 503;
+            reqEntry.res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            reqEntry.res.end('Server Shutting Down');
+          } else if (!reqEntry.res.writableEnded) {
+            reqEntry.res.destroy(shutdownReason);
+          }
+        }
+
+        // Force destroy all lingering sockets
         for (const socket of this.sockets) {
           socket.destroy();
         }
-        resolve();
+        finish();
       };
 
       if (signal.aborted) {
@@ -130,46 +170,89 @@ export class HttpServerHostedService implements HostedService {
 
       signal.addEventListener('abort', onAbort, { once: true });
 
-      this.server!.close(() => {
-        signal.removeEventListener('abort', onAbort);
-        resolve();
+      // 1. Stop accepting new incoming connections
+      server.close(() => {
+        finish();
       });
 
-      // Stop accepting new keep-alive connections on Node 18.2+
-      if (typeof (this.server as any).closeIdleConnections === 'function') {
-        (this.server as any).closeIdleConnections();
+      // 2. Close idle keep-alive connections immediately
+      if (typeof (server as any).closeIdleConnections === 'function') {
+        (server as any).closeIdleConnections();
+      }
+
+      // 3. Graceful drain: wait for in-flight requests or drain timeout
+      if (this.activeRequests.size > 0) {
+        if (this.logger) {
+          this.logger.info(`Waiting for ${this.activeRequests.size} active request(s) to drain (timeout: ${this.shutdownDrainTimeoutMs}ms)...`);
+        }
+
+        drainTimeoutTimer = setTimeout(onAbort, this.shutdownDrainTimeoutMs);
+
+        this.drainResolver = () => {
+          if (this.activeRequests.size === 0) {
+            if (drainTimeoutTimer) {
+              clearTimeout(drainTimeoutTimer);
+            }
+            this.drainResolver = undefined;
+            // Close remaining connections so server.close callback triggers
+            if (typeof (server as any).closeIdleConnections === 'function') {
+              (server as any).closeIdleConnections();
+            }
+            for (const socket of this.sockets) {
+              socket.destroy();
+            }
+          }
+        };
+      } else {
+        // No active requests; close remaining sockets
+        for (const socket of this.sockets) {
+          socket.destroy();
+        }
       }
     });
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const abortController = new AbortController();
+    const requestEntry: ActiveRequestEntry = { abortController, res };
+    this.activeRequests.add(requestEntry);
 
-    // Trigger abort signal if client disconnects prematurely before response ends
-    req.on('close', () => {
-      if (!res.writableEnded) {
-        abortController.abort();
+    // Client Disconnect Detection:
+    // In Node.js, res.on('close') fires when underlying socket closes.
+    // If !res.writableFinished && !res.writableEnded, connection closed prematurely before response completion.
+    // Normal response completion (writableFinished === true) MUST NOT abort the signal.
+    res.on('close', () => {
+      if (!res.writableFinished && !res.writableEnded) {
+        if (!abortController.signal.aborted) {
+          abortController.abort(new DOMException('Client disconnected', 'AbortError'));
+        }
       }
     });
 
-    // Request Timeout Protection (Slowloris & runaway requests)
+    // Request Execution Timeout (handler duration protection)
     let timeoutTimer: NodeJS.Timeout | undefined;
-    if (this.requestTimeoutMs > 0) {
+    if (this.requestExecutionTimeoutMs > 0) {
       timeoutTimer = setTimeout(() => {
-        if (!res.writableEnded) {
+        if (!res.writableFinished && !res.writableEnded) {
           if (this.logger) {
-            this.logger.warn(`Request timeout reached (${this.requestTimeoutMs}ms): ${req.method} ${req.url}`);
+            this.logger.warn(`Request execution timeout reached (${this.requestExecutionTimeoutMs}ms): ${req.method} ${req.url}`);
           }
-          abortController.abort();
+          const timeoutReason = new DOMException('Request execution timed out', 'TimeoutError');
+          abortController.abort(timeoutReason);
           if (!res.headersSent) {
-            res.statusCode = 408;
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.end('Request Timeout');
+            res.statusCode = 503;
+            res.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+            res.end(JSON.stringify({
+              type: 'https://tsnx.dev/problems/timeout',
+              title: 'Service Unavailable',
+              status: 503,
+              detail: `The request execution exceeded timeout of ${this.requestExecutionTimeoutMs}ms.`,
+            }));
           } else {
-            res.destroy();
+            res.destroy(timeoutReason);
           }
         }
-      }, this.requestTimeoutMs);
+      }, this.requestExecutionTimeoutMs);
     }
 
     // Create a new request-scoped DI container
@@ -186,21 +269,48 @@ export class HttpServerHostedService implements HostedService {
     try {
       await this.handler(ctx);
     } catch (err: any) {
-      if (this.logger) {
-        this.logger.error(`Unhandled error during request processing: ${err?.stack || err?.message || err}`);
-      }
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.end('Internal Server Error');
-      } else if (!res.writableEnded) {
-        res.destroy(err);
+      // Check if client disconnected - suppress noisy 500
+      if (abortController.signal.aborted && abortController.signal.reason?.name === 'AbortError') {
+        if (this.logger) {
+          this.logger.debug?.(`Request aborted by client: ${req.method} ${req.url}`);
+        }
+      } else if (abortController.signal.aborted && abortController.signal.reason?.name === 'TimeoutError') {
+        if (this.logger) {
+          this.logger.warn(`Request execution timed out: ${req.method} ${req.url}`);
+        }
+      } else {
+        if (this.logger) {
+          this.logger.error(`Unhandled error during request processing: ${err?.stack || err?.message || err}`);
+        }
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end('Internal Server Error');
+        } else if (!res.writableEnded) {
+          res.destroy(err);
+        }
       }
     } finally {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
       }
-      // Clean up scoped DI services deterministically after request pipeline and stream finish
+
+      // 1. Run onCompleted callbacks (scoped DI is still available during completion)
+      try {
+        await ctx.response.fireCompleted();
+      } catch (completedErr) {
+        if (this.logger) {
+          this.logger.error(`Error in onCompleted callback: ${completedErr}`);
+        }
+      }
+
+      // 2. Remove from active in-flight requests and check graceful drain
+      this.activeRequests.delete(requestEntry);
+      if (this.activeRequests.size === 0 && this.drainResolver) {
+        this.drainResolver();
+      }
+
+      // 3. Clean up scoped DI services deterministically after onCompleted has finished
       try {
         await requestScope.dispose();
       } catch (scopeErr) {

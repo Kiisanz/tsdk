@@ -5,7 +5,7 @@ export interface HttpResult {
   executeAsync(ctx: HttpContext): Promise<void>;
 }
 
-export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult>;
+export type RouteHandler = (ctx: HttpContext) => HttpResult | Promise<HttpResult> | Promise<void> | void;
 
 export class JsonResult implements HttpResult {
   constructor(

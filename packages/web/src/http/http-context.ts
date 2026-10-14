@@ -42,7 +42,7 @@ export class HttpRequest {
 
   public async readText(): Promise<string> {
     if (this.signal.aborted) {
-      throw new Error('Request aborted');
+      throw this.signal.reason ?? new DOMException('Request aborted', 'AbortError');
     }
 
     const chunks: Buffer[] = [];
@@ -50,7 +50,7 @@ export class HttpRequest {
 
     for await (const chunk of this.req) {
       if (this.signal.aborted) {
-        throw new Error('Request aborted');
+        throw this.signal.reason ?? new DOMException('Request aborted', 'AbortError');
       }
       const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       totalSize += bufferChunk.length;
@@ -95,15 +95,59 @@ export class HttpRequest {
   }
 }
 
+export type LifecycleCallback = () => void | Promise<void>;
+
 export class HttpResponse {
   private readonly res: ServerResponse;
   private readonly reqMethod: string;
   private readonly signal: AbortSignal;
+  private readonly startingCallbacks: LifecycleCallback[] = [];
+  private readonly completedCallbacks: LifecycleCallback[] = [];
+  private startingFired = false;
+  private completedFired = false;
 
   constructor(res: ServerResponse, reqMethod: string, signal: AbortSignal) {
     this.res = res;
     this.reqMethod = reqMethod;
     this.signal = signal;
+  }
+
+  public onStarting(callback: LifecycleCallback): void {
+    if (this.startingFired || this.hasStarted) {
+      throw new Error('Cannot register onStarting callback after response has started.');
+    }
+    this.startingCallbacks.push(callback);
+  }
+
+  public onCompleted(callback: LifecycleCallback): void {
+    if (this.completedFired) {
+      throw new Error('Cannot register onCompleted callback after response has completed.');
+    }
+    this.completedCallbacks.push(callback);
+  }
+
+  public async fireStarting(): Promise<void> {
+    if (this.startingFired) {
+      return;
+    }
+    this.startingFired = true;
+    for (const cb of this.startingCallbacks) {
+      await cb();
+    }
+  }
+
+  public async fireCompleted(): Promise<void> {
+    if (this.completedFired) {
+      return;
+    }
+    this.completedFired = true;
+    for (const cb of this.completedCallbacks) {
+      try {
+        await cb();
+      } catch {
+        // Exceptions from onCompleted must not cause secondary response or crash
+      }
+    }
   }
 
   public get raw(): ServerResponse {
@@ -156,8 +200,11 @@ export class HttpResponse {
     if (this.hasStarted) return;
     this.statusCode = statusCode;
 
+    await this.fireStarting();
+    if (this.hasStarted) return;
+
     // RFC compliance: 204 No Content MUST NOT send body or Content-Length
-    if (statusCode === 204) {
+    if (this.statusCode === 204) {
       this.removeHeader('Content-Type');
       this.removeHeader('Content-Length');
       this.res.end();
@@ -165,7 +212,7 @@ export class HttpResponse {
     }
 
     // 304 Not Modified sends no body
-    if (statusCode === 304) {
+    if (this.statusCode === 304) {
       this.res.end();
       return;
     }
@@ -189,8 +236,11 @@ export class HttpResponse {
     if (this.hasStarted) return;
     this.statusCode = statusCode;
 
+    await this.fireStarting();
+    if (this.hasStarted) return;
+
     // RFC compliance: 204 No Content
-    if (statusCode === 204) {
+    if (this.statusCode === 204) {
       this.removeHeader('Content-Type');
       this.removeHeader('Content-Length');
       this.res.end();
@@ -198,7 +248,7 @@ export class HttpResponse {
     }
 
     // 304 Not Modified
-    if (statusCode === 304) {
+    if (this.statusCode === 304) {
       this.res.end();
       return;
     }
@@ -219,9 +269,12 @@ export class HttpResponse {
     if (this.hasStarted) return;
     this.statusCode = statusCode;
 
+    await this.fireStarting();
+    if (this.hasStarted) return;
+
     // RFC compliance: 204 / 304
-    if (statusCode === 204 || statusCode === 304) {
-      if (statusCode === 204) {
+    if (this.statusCode === 204 || this.statusCode === 304) {
+      if (this.statusCode === 204) {
         this.removeHeader('Content-Type');
         this.removeHeader('Content-Length');
       }
@@ -256,6 +309,9 @@ export class HttpResponse {
     if (statusCode !== undefined) {
       this.statusCode = statusCode;
     }
+
+    await this.fireStarting();
+    if (this.hasStarted) return;
 
     if (this.statusCode === 204) {
       this.removeHeader('Content-Type');

@@ -11,6 +11,45 @@ export function createExceptionHandlerMiddleware(logger?: ILogger, options: Erro
     try {
       await next(ctx);
     } catch (err: any) {
+      const hasExplicitStatusCode = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600;
+
+      if (!hasExplicitStatusCode) {
+        // 1. Client Disconnect / Abort: suppress 500 error logging and do not write response
+        const isAbort =
+          (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'AbortError') ||
+          err?.name === 'AbortError';
+
+        if (isAbort) {
+          if (logger) {
+            logger.debug?.(`Request aborted by client: ${ctx.request.method} ${ctx.request.url}`);
+          }
+          return;
+        }
+
+        // 2. Request Execution Timeout
+        const isTimeout =
+          (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'TimeoutError') ||
+          err?.name === 'TimeoutError';
+
+        if (isTimeout) {
+          if (logger) {
+            logger.warn(`Request execution timeout: ${ctx.request.method} ${ctx.request.url}`);
+          }
+          if (!ctx.response.hasStarted) {
+            ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+            await ctx.response.writeJson({
+              type: 'https://tsnx.dev/problems/timeout',
+              title: 'Service Unavailable',
+              status: 503,
+              detail: 'The request execution timed out.',
+            }, 503);
+          } else if (!ctx.response.raw.writableEnded) {
+            ctx.response.raw.destroy(err);
+          }
+          return;
+        }
+      }
+
       if (logger) {
         logger.error(`Unhandled exception processing ${ctx.request.method} ${ctx.request.url}: ${err?.stack || err?.message || err}`);
       }

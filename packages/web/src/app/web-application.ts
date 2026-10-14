@@ -213,6 +213,18 @@ export class WebApplication {
         effectiveServerOptions.host = configHost;
       }
     }
+    if (effectiveServerOptions.requestExecutionTimeoutMs === undefined) {
+      const configTimeout = serverConfig.getNumber('RequestExecutionTimeoutMs') ?? serverConfig.getNumber('RequestTimeoutMs');
+      if (configTimeout !== undefined) {
+        effectiveServerOptions.requestExecutionTimeoutMs = configTimeout;
+      }
+    }
+    if (effectiveServerOptions.shutdownDrainTimeoutMs === undefined) {
+      const configDrain = serverConfig.getNumber('ShutdownDrainTimeoutMs');
+      if (configDrain !== undefined) {
+        effectiveServerOptions.shutdownDrainTimeoutMs = configDrain;
+      }
+    }
 
     this.effectiveServerOptions = effectiveServerOptions;
 
