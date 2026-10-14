@@ -194,10 +194,12 @@ console.log('Calculation:', add(10, 25));
 `,
       );
 
-      // Link node_modules for local package resolution
+      // Link node_modules for local package resolution if not already linked by tsnx ref add
       const runnerModules = path.join(runnerDir, 'node_modules', '@flowapp');
-      fs.mkdirSync(runnerModules, { recursive: true });
-      fs.symlinkSync(coreLibDir, path.join(runnerModules, 'core-lib'), 'junction');
+      if (!fs.existsSync(path.join(runnerModules, 'core-lib'))) {
+        fs.mkdirSync(runnerModules, { recursive: true });
+        fs.symlinkSync(coreLibDir, path.join(runnerModules, 'core-lib'), 'junction');
+      }
 
       // 5. tsdk build --workspace
       const buildOutput = execFileSync(

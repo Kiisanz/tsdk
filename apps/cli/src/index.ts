@@ -24,6 +24,7 @@ Commands:
   create <template> <name>   Create a new project (options: --no-install, --package-manager)
   workspace init [name]      Initialize a new solution workspace (options: -n, --scope, --no-scope)
   workspace add <path>       Register an existing project into the nearest workspace
+  workspace remove <target>  Unregister a project from workspace references (options: --delete)
   run [options] [args...]    Build and run project (options: --project, -p, --no-build)
   watch [args...]            Watch for changes, rebuild incrementally, and restart app
   test                       Run project tests using dependency graph
@@ -119,7 +120,7 @@ async function main(): Promise<void> {
       if (!context) {
         reportMissingContext(forceWorkspace);
       }
-      exitCode = runRef(subCommand, rawArgs.slice(2), context);
+      exitCode = await runRef(subCommand, rawArgs.slice(2), context);
       break;
 
     case 'build':

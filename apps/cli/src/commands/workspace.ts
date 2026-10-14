@@ -12,8 +12,13 @@ Usage:
   tsnx workspace <subcommand> [options]
 
 Subcommands:
-  init [name]    Initialize a new solution workspace with tsconfig.json & pnpm-workspace.yaml
-  add <path>     Register an existing project into the nearest workspace
+  init [name]                Initialize a new solution workspace with tsconfig.json & pnpm-workspace.yaml
+  add <path>                 Register an existing project into the nearest workspace
+  remove <name|path>         Unregister a project from workspace references and dependencies
+  rm <name|path>             Alias for remove
+
+Options for "workspace remove":
+  --delete, -d               Delete the project directory from disk
 
 Options for "workspace init":
   -n, --name <name>    Workspace name
@@ -103,6 +108,37 @@ Options for "workspace init":
       return 0;
     } catch (err: unknown) {
       console.error(`\n✖ Failed to add project to workspace:`, err instanceof Error ? err.message : err);
+      return 1;
+    }
+  }
+
+  if (subCommand === 'remove' || subCommand === 'rm') {
+    const targetProject = args.find((a) => !a.startsWith('-'));
+    const deleteFiles = args.includes('--delete') || args.includes('-d') || args.includes('--purge');
+
+    if (!targetProject) {
+      console.error('[TSNX Error] Please specify a project name or path: tsnx workspace remove <project> [--delete]');
+      return 1;
+    }
+
+    const ws = context?.kind === 'workspace' ? context.workspace : context?.parentWorkspace;
+    if (!ws) {
+      console.error('[TSNX Error] No workspace found in current or parent directories.');
+      return 1;
+    }
+
+    try {
+      const res = WorkspaceManager.removeProjectFromWorkspace(ws.filePath, targetProject, { deleteFiles });
+      console.log(`\n✔ Unregistered project "${res.removedProjectName}" from workspace "${ws.name}".`);
+      if (res.cleanedReferencesFrom.length > 0) {
+        console.log(`✔ Cleaned references from: ${res.cleanedReferencesFrom.join(', ')}`);
+      }
+      if (res.deletedFiles) {
+        console.log(`✔ Deleted project directory from disk.`);
+      }
+      return 0;
+    } catch (err: unknown) {
+      console.error(`\n✖ Failed to remove project from workspace:`, err instanceof Error ? err.message : err);
       return 1;
     }
   }
