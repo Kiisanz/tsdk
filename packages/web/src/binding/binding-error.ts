@@ -6,15 +6,9 @@ export interface BindingErrorEntry {
   message: string;
 }
 
-export interface ProblemDetails {
-  type: string;
-  title: string;
-  status: number;
-  detail?: string;
-  instance?: string;
-  errors?: Record<string, string[]>;
-  [key: string]: any;
-}
+import { ProblemDetails } from '../errors/types.js';
+
+export { ProblemDetails };
 
 export class RequestBindingException extends Error {
   public readonly status = 400;

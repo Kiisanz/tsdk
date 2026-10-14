@@ -1,0 +1,467 @@
+import { describe, it, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  WebApplication,
+  Results,
+  IExceptionHandler,
+  HttpContext,
+  formatProblemDetails,
+  RequestBindingException,
+  BadHttpRequestException,
+} from '../index.js';
+
+describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
+  let app: WebApplication | undefined;
+
+  afterEach(async () => {
+    if (app) {
+      await app.stop();
+      app = undefined;
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // 1. RFC 9457 Serializer & Extension Members
+  // --------------------------------------------------------------------------
+  it('1. formats Problem Details strictly to RFC 9457 with top-level extension members', () => {
+    const problem = formatProblemDetails({
+      status: 400,
+      detail: 'The email address is invalid.',
+      instance: '/users/registration',
+      errors: {
+        email: ['Must be a valid email format'],
+      },
+      traceId: 'tx-12345',
+      extensions: {
+        errorCode: 'VALIDATION_FAILED',
+      },
+    });
+
+    assert.strictEqual(problem.type, 'about:blank');
+    assert.strictEqual(problem.title, 'Bad Request');
+    assert.strictEqual(problem.status, 400);
+    assert.strictEqual(problem.detail, 'The email address is invalid.');
+    assert.strictEqual(problem.instance, '/users/registration');
+
+    // RFC 9457: extensions MUST be serialized at the top level
+    assert.deepStrictEqual(problem.errors, { email: ['Must be a valid email format'] });
+    assert.strictEqual(problem.traceId, 'tx-12345');
+    assert.strictEqual(problem.errorCode, 'VALIDATION_FAILED');
+    assert.strictEqual(problem.extensions, undefined);
+  });
+
+  // --------------------------------------------------------------------------
+  // 2. Results.problem() and ctx.response.writeProblem()
+  // --------------------------------------------------------------------------
+  it('2. Results.problem() and writeProblem() produce standard RFC 9457 problem+json responses', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapGet('/results-problem', () => {
+      return Results.problem({
+        status: 404,
+        title: 'Product Not Found',
+        detail: 'Product with ID 99 does not exist',
+        productId: 99,
+      });
+    });
+
+    app.mapGet('/write-problem', async (ctx) => {
+      await ctx.response.writeProblem({
+        status: 409,
+        title: 'Conflict Detected',
+        detail: 'Version mismatch on resource',
+      });
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    // Test Results.problem()
+    const res1 = await fetch(`http://127.0.0.1:${port}/results-problem`);
+    assert.strictEqual(res1.status, 404);
+    assert.strictEqual(res1.headers.get('content-type'), 'application/problem+json; charset=utf-8');
+    const json1 = await res1.json() as any;
+    assert.strictEqual(json1.type, 'about:blank');
+    assert.strictEqual(json1.title, 'Product Not Found');
+    assert.strictEqual(json1.status, 404);
+    assert.strictEqual(json1.detail, 'Product with ID 99 does not exist');
+    assert.strictEqual(json1.productId, 99);
+
+    // Test writeProblem()
+    const res2 = await fetch(`http://127.0.0.1:${port}/write-problem`);
+    assert.strictEqual(res2.status, 409);
+    assert.strictEqual(res2.headers.get('content-type'), 'application/problem+json; charset=utf-8');
+    const json2 = await res2.json() as any;
+    assert.strictEqual(json2.title, 'Conflict Detected');
+    assert.strictEqual(json2.status, 409);
+    assert.strictEqual(json2.detail, 'Version mismatch on resource');
+  });
+
+  // --------------------------------------------------------------------------
+  // 3. Custom IExceptionHandler: handles exception when returning true
+  // --------------------------------------------------------------------------
+  it('3. custom IExceptionHandler handles exception when returning true', async () => {
+    class EntityNotFoundException extends Error {
+      constructor(public readonly entityName: string, public readonly id: string) {
+        super(`${entityName} with ID ${id} was not found`);
+      }
+    }
+
+    class DomainExceptionHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, error: unknown): boolean | Promise<boolean> {
+        if (!(error instanceof EntityNotFoundException)) {
+          return false;
+        }
+
+        ctx.response.writeProblem({
+          type: 'https://example.com/problems/entity-not-found',
+          title: 'Entity Not Found',
+          status: 404,
+          detail: error.message,
+          entity: error.entityName,
+          entityId: error.id,
+        });
+        return true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(DomainExceptionHandler);
+    app = builder.build();
+
+    app.mapGet('/orders/:id', (ctx) => {
+      throw new EntityNotFoundException('Order', ctx.params.id);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/orders/order-42`);
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.headers.get('content-type'), 'application/problem+json; charset=utf-8');
+    const problem = await res.json() as any;
+    assert.strictEqual(problem.type, 'https://example.com/problems/entity-not-found');
+    assert.strictEqual(problem.title, 'Entity Not Found');
+    assert.strictEqual(problem.status, 404);
+    assert.strictEqual(problem.detail, 'Order with ID order-42 was not found');
+    assert.strictEqual(problem.entity, 'Order');
+    assert.strictEqual(problem.entityId, 'order-42');
+  });
+
+  // --------------------------------------------------------------------------
+  // 4. Multiple handlers executed in FIFO order, falling through on false
+  // --------------------------------------------------------------------------
+  it('4. multiple handlers execute in FIFO order, falling through on false to next handler', async () => {
+    const executionOrder: string[] = [];
+
+    class SpecificErrorA extends Error {}
+    class SpecificErrorB extends Error {}
+
+    class FirstHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, error: unknown): boolean {
+        executionOrder.push('FirstHandler');
+        if (error instanceof SpecificErrorA) {
+          ctx.response.writeProblem({ status: 400, title: 'Handled by A' });
+          return true;
+        }
+        return false;
+      }
+    }
+
+    class SecondHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, error: unknown): boolean {
+        executionOrder.push('SecondHandler');
+        if (error instanceof SpecificErrorB) {
+          ctx.response.writeProblem({ status: 422, title: 'Handled by B' });
+          return true;
+        }
+        return false;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(FirstHandler);
+    builder.services.addExceptionHandler(SecondHandler);
+    app = builder.build();
+
+    app.mapGet('/trigger-b', () => {
+      throw new SpecificErrorB();
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/trigger-b`);
+    assert.strictEqual(res.status, 422);
+    const problem = await res.json() as any;
+    assert.strictEqual(problem.title, 'Handled by B');
+    assert.deepStrictEqual(executionOrder, ['FirstHandler', 'SecondHandler']);
+  });
+
+  // --------------------------------------------------------------------------
+  // 5. Scoped DI resolution in IExceptionHandler
+  // --------------------------------------------------------------------------
+  it('5. IExceptionHandler resolves request-scoped dependencies via DI', async () => {
+    class RequestScopedAudit {
+      public loggedErrors: string[] = [];
+      log(msg: string) {
+        this.loggedErrors.push(msg);
+      }
+    }
+
+    class BusinessException extends Error {}
+
+    class AuditExceptionHandler implements IExceptionHandler {
+      constructor(private readonly audit: RequestScopedAudit) {}
+
+      tryHandleAsync(ctx: HttpContext, error: unknown): boolean {
+        if (error instanceof BusinessException) {
+          this.audit.log(`Handled: ${error.message}`);
+          ctx.response.writeProblem({
+            status: 400,
+            title: 'Business Error',
+            detail: error.message,
+            auditCount: this.audit.loggedErrors.length,
+          });
+          return true;
+        }
+        return false;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addScoped(RequestScopedAudit, () => new RequestScopedAudit());
+    builder.services.addExceptionHandler(AuditExceptionHandler, RequestScopedAudit);
+    app = builder.build();
+
+    app.mapGet('/biz', () => {
+      throw new BusinessException('Balance cannot be negative');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/biz`);
+    assert.strictEqual(res.status, 400);
+    const json = await res.json() as any;
+    assert.strictEqual(json.title, 'Business Error');
+    assert.strictEqual(json.detail, 'Balance cannot be negative');
+    assert.strictEqual(json.auditCount, 1);
+  });
+
+  // --------------------------------------------------------------------------
+  // 6. Robust failure: handler throws -> invokes safe 500 fallback without loop
+  // --------------------------------------------------------------------------
+  it('6. handler throws -> framework catches, logs, and falls back to safe 500 without loop', async () => {
+    class FailingHandler implements IExceptionHandler {
+      tryHandleAsync(): boolean {
+        throw new Error('Database connection failed inside exception handler');
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(FailingHandler);
+    app = builder.build();
+
+    app.mapGet('/throw-original', () => {
+      throw new Error('Initial domain fault');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/throw-original`);
+    assert.strictEqual(res.status, 500);
+    assert.strictEqual(res.headers.get('content-type'), 'application/problem+json; charset=utf-8');
+    const json = await res.json() as any;
+    assert.strictEqual(json.status, 500);
+    assert.strictEqual(json.title, 'Internal Server Error');
+  });
+
+  // --------------------------------------------------------------------------
+  // 7. No duck-typing: third-party error with .statusCode is NOT trusted -> maps to 500
+  // --------------------------------------------------------------------------
+  it('7. third-party error with statusCode property is NOT trusted and maps to 500', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapGet('/third-party-db-error', () => {
+      // Simulate external driver attaching statusCode (e.g., pg, axios)
+      const dbError = new Error('Query syntax error from DB driver');
+      (dbError as any).statusCode = 400;
+      throw dbError;
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/third-party-db-error`);
+    // MUST be 500, not 400!
+    assert.strictEqual(res.status, 500);
+    const json = await res.json() as any;
+    assert.strictEqual(json.status, 500);
+    assert.strictEqual(json.title, 'Internal Server Error');
+  });
+
+  // --------------------------------------------------------------------------
+  // 8. RequestBindingException maps to 400 Problem Details with top-level errors
+  // --------------------------------------------------------------------------
+  it('8. RequestBindingException maps to 400 Problem Details with RFC 9457 errors member', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapGet('/manual-binding-error', () => {
+      throw new RequestBindingException([
+        { source: 'query', path: 'page', message: 'Expected integer greater than 0' },
+        { source: 'query', path: 'size', message: 'Maximum size is 100' },
+      ]);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/manual-binding-error`);
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(res.headers.get('content-type'), 'application/problem+json; charset=utf-8');
+    const json = await res.json() as any;
+    assert.strictEqual(json.type, 'https://tsnx.dev/problems/request-binding');
+    assert.strictEqual(json.title, 'One or more request binding errors occurred.');
+    assert.strictEqual(json.status, 400);
+    assert.deepStrictEqual(json.errors, {
+      page: ['Expected integer greater than 0'],
+      size: ['Maximum size is 100'],
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 9. Response already committed safety
+  // --------------------------------------------------------------------------
+  it('9. exception thrown after response started does not send duplicate response', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapGet('/committed-error', async (ctx) => {
+      // Partially send response
+      ctx.response.setHeader('X-Partial', 'yes');
+      await ctx.response.writeText('Partial response');
+      // Now throw after headers are already committed
+      throw new Error('Late crash after headers committed');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/committed-error`);
+    assert.strictEqual(res.status, 200);
+    const body = await res.text();
+    assert.strictEqual(body, 'Partial response');
+  });
+
+  // --------------------------------------------------------------------------
+  // 10. Sanitized detail in production vs detailed in development
+  // --------------------------------------------------------------------------
+  it('10. sanitizes 500 detail in production and includes message when includeDetails is true', async () => {
+    // Production app
+    const prodBuilder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    const prodApp = prodBuilder.build();
+    prodApp.mapGet('/secret-crash', () => {
+      throw new Error('Secret password: 12345_in_db');
+    });
+    await prodApp.start();
+    const prodPort = prodApp.listeningPort!;
+
+    const prodRes = await fetch(`http://127.0.0.1:${prodPort}/secret-crash`);
+    assert.strictEqual(prodRes.status, 500);
+    const prodJson = await prodRes.json() as any;
+    assert.strictEqual(prodJson.detail, 'An unexpected internal error occurred.');
+    assert.strictEqual(JSON.stringify(prodJson).includes('12345_in_db'), false);
+    await prodApp.stop();
+
+    // Development app
+    const devBuilder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1', '--Environment=Development']);
+    const devApp = devBuilder.build();
+    devApp.mapGet('/debug-crash', () => {
+      throw new Error('Debug details for developer');
+    });
+    await devApp.start();
+    const devPort = devApp.listeningPort!;
+
+    const devRes = await fetch(`http://127.0.0.1:${devPort}/debug-crash`);
+    assert.strictEqual(devRes.status, 500);
+    const devJson = await devRes.json() as any;
+    assert.strictEqual(devJson.detail, 'Debug details for developer');
+    await devApp.stop();
+  });
+
+  // --------------------------------------------------------------------------
+  // 11. BadHttpRequestException maps to explicit status code Problem Details
+  // --------------------------------------------------------------------------
+  it('11. BadHttpRequestException maps to explicit status code Problem Details', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    app = builder.build();
+
+    app.mapGet('/bad-req', () => {
+      throw new BadHttpRequestException('Header format unsupported', 400);
+    });
+
+    app.mapGet('/custom-payload-too-large', () => {
+      throw new BadHttpRequestException('File upload exceeds limit', 413);
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res1 = await fetch(`http://127.0.0.1:${port}/bad-req`);
+    assert.strictEqual(res1.status, 400);
+    const json1 = await res1.json() as any;
+    assert.strictEqual(json1.status, 400);
+    assert.strictEqual(json1.title, 'Bad Request');
+    assert.strictEqual(json1.detail, 'Header format unsupported');
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/custom-payload-too-large`);
+    assert.strictEqual(res2.status, 413);
+    const json2 = await res2.json() as any;
+    assert.strictEqual(json2.status, 413);
+    assert.strictEqual(json2.title, 'Payload Too Large');
+    assert.strictEqual(json2.detail, 'File upload exceeds limit');
+  });
+
+  // --------------------------------------------------------------------------
+  // 12. Factory-based addExceptionHandler registration
+  // --------------------------------------------------------------------------
+  it('12. supports factory-based addExceptionHandler registration', async () => {
+    class CustomError extends Error {}
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler((_sp) => ({
+      tryHandleAsync(ctx, error) {
+        if (error instanceof CustomError) {
+          ctx.response.writeProblem({
+            status: 418,
+            title: "I'm a teapot",
+            detail: 'Factory resolved handler',
+          });
+          return true;
+        }
+        return false;
+      },
+    }));
+
+    app = builder.build();
+
+    app.mapGet('/teapot', () => {
+      throw new CustomError();
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/teapot`);
+    assert.strictEqual(res.status, 418);
+    const json = await res.json() as any;
+    assert.strictEqual(json.status, 418);
+    assert.strictEqual(json.title, "I'm a teapot");
+    assert.strictEqual(json.detail, 'Factory resolved handler');
+  });
+});
