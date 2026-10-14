@@ -4,6 +4,7 @@ import http from 'node:http';
 import { Readable } from 'node:stream';
 import { WebApplication } from '../app/web-application.js';
 import { Results } from '../http/results.js';
+import { InvalidResponseStateException } from '../http/http-context.js';
 
 describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () => {
   let app: WebApplication | undefined;
@@ -219,9 +220,10 @@ describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () =>
     assert.strictEqual(doubleResponseError, undefined, 'Late write must be cleanly ignored without throwing');
   });
 
-  // 6. onStarting async dieksekusi tepat sekali saat concurrent writes
-  test('6. onStarting async dieksekusi tepat sekali saat concurrent writes', async () => {
+  // 6. onStarting async dieksekusi tepat sekali saat concurrent writes dan write konkuren melempar InvalidResponseStateException
+  test('6. onStarting async dieksekusi tepat sekali saat concurrent writes dan write konkuren melempar InvalidResponseStateException', async () => {
     let startingCallCount = 0;
+    let concurrentError: any;
 
     const builder = WebApplication.createBuilder();
     builder.configureServer({ port: 0, host: '127.0.0.1' });
@@ -233,11 +235,16 @@ describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () =>
         await new Promise((r) => setTimeout(r, 20));
       });
 
-      // Two writes racing concurrently
-      await Promise.all([
+      // Two writes racing concurrently in application code
+      const results = await Promise.allSettled([
         ctx.response.writeText('Hello'),
         ctx.response.writeText('World'),
       ]);
+
+      const rejected = results.find((r) => r.status === 'rejected');
+      if (rejected && rejected.status === 'rejected') {
+        concurrentError = rejected.reason;
+      }
     });
 
     await app.start();
@@ -246,9 +253,13 @@ describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () =>
     const res = await fetch(`http://127.0.0.1:${port}/concurrent-writes`);
     assert.strictEqual(res.status, 200);
     const text = await res.text();
-    // One of the writes succeeded, and starting callbacks ran EXACTLY once!
+    // One write succeeded with 200 and sent body
     assert.ok(text === 'Hello' || text === 'World');
+    // onStarting ran EXACTLY once
     assert.strictEqual(startingCallCount, 1);
+    // The concurrent write was NOT silently swallowed; it threw an explicit InvalidResponseStateException
+    assert.ok(concurrentError instanceof InvalidResponseStateException);
+    assert.match(concurrentError.message, /Cannot start another write while a response write is already in progress/);
   });
 
   // 7. onCompleted dieksekusi tepat sekali pada finish, close, dan error

@@ -275,6 +275,14 @@ export class HttpServerHostedService implements HostedService {
       }, this.requestExecutionTimeoutMs);
     }
 
+    // Lifecycle Architecture Guarantee:
+    // - Response Completion: Occurs independently when response headers/body finish (or on timeout/disconnect).
+    // - Handler Completion: Framework awaits this.handler(ctx) until it settles.
+    // - Scoped DI Disposal: Deferred to finally block AFTER this.handler(ctx) settles to prevent
+    //   premature disposal while in-flight operations are still actively using scoped dependencies.
+    // Trade-off Note: If an uncooperative handler never settles (e.g. pending Promise indefinitely),
+    // its scope remains allocated until host shutdown. During host stop(), shutdownDrainTimeoutMs guarantees
+    // the server terminates connections without hanging indefinitely.
     try {
       await this.handler(ctx);
     } catch (err: any) {

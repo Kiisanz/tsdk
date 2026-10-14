@@ -97,6 +97,13 @@ export class HttpRequest {
 
 export type LifecycleCallback = () => void | Promise<void>;
 
+export class InvalidResponseStateException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidResponseStateException';
+  }
+}
+
 export class HttpResponse {
   private readonly res: ServerResponse;
   private readonly reqMethod: string;
@@ -113,6 +120,30 @@ export class HttpResponse {
     this.res = res;
     this.reqMethod = reqMethod;
     this.signal = signal;
+  }
+
+  private prepareWrite(): boolean {
+    // 1. Silent suppression if canceled/aborted externally or already ended
+    if (this.signal.aborted || this.res.writableEnded) {
+      return false;
+    }
+
+    // 2. Concurrency bug in developer code: throw explicit exception
+    if (this.isWriting) {
+      throw new InvalidResponseStateException(
+        'Cannot start another write while a response write is already in progress.'
+      );
+    }
+
+    // 3. Headers already sent on an active response
+    if (this.hasStarted) {
+      throw new InvalidResponseStateException(
+        'Cannot start response: headers have already been sent.'
+      );
+    }
+
+    this.isWriting = true;
+    return true;
   }
 
   public onStarting(callback: LifecycleCallback): void {
@@ -214,11 +245,10 @@ export class HttpResponse {
   }
 
   public async writeJson(data: any, statusCode = 200): Promise<void> {
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    if (!this.prepareWrite()) return;
 
     await this.fireStarting();
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
-    this.isWriting = true;
+    if (this.signal.aborted || this.res.writableEnded) return;
 
     this.statusCode = statusCode;
 
@@ -252,11 +282,10 @@ export class HttpResponse {
   }
 
   public async writeText(text: string, statusCode = 200, contentType = 'text/plain; charset=utf-8'): Promise<void> {
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    if (!this.prepareWrite()) return;
 
     await this.fireStarting();
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
-    this.isWriting = true;
+    if (this.signal.aborted || this.res.writableEnded) return;
 
     this.statusCode = statusCode;
 
@@ -287,11 +316,10 @@ export class HttpResponse {
   }
 
   public async writeStream(stream: Readable, statusCode = 200, contentType = 'application/octet-stream'): Promise<void> {
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    if (!this.prepareWrite()) return;
 
     await this.fireStarting();
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
-    this.isWriting = true;
+    if (this.signal.aborted || this.res.writableEnded) return;
 
     this.statusCode = statusCode;
 
@@ -328,11 +356,10 @@ export class HttpResponse {
   }
 
   public async end(statusCode?: number): Promise<void> {
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
+    if (!this.prepareWrite()) return;
 
     await this.fireStarting();
-    if (this.hasStarted || this.res.writableEnded || this.isWriting) return;
-    this.isWriting = true;
+    if (this.signal.aborted || this.res.writableEnded) return;
 
     if (statusCode !== undefined) {
       this.statusCode = statusCode;
