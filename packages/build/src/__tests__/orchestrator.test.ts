@@ -167,4 +167,56 @@ projects:
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('successfully builds workspace projects importing node:process without local @types/node', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-build-node-types-'));
+
+    try {
+      const hostDir = path.join(tmpDir, 'ArasHRMS.Host');
+      const srcDir = path.join(hostDir, 'src');
+      fs.mkdirSync(srcDir, { recursive: true });
+
+      // Code importing node:process directly
+      fs.writeFileSync(
+        path.join(srcDir, 'main.ts'),
+        `import process from 'node:process';
+console.log('Process ID:', process.pid);
+`,
+      );
+
+      fs.writeFileSync(
+        path.join(hostDir, 'ArasHRMS.Host.tsproj'),
+        `schemaVersion: 1
+kind: Project
+metadata:
+  name: ArasHRMS.Host
+spec:
+  type: console
+`,
+      );
+
+      const tswPath = path.join(tmpDir, 'ArasHRMS.tswork');
+      fs.writeFileSync(
+        tswPath,
+        `schemaVersion: 1
+kind: Workspace
+metadata:
+  name: ArasHRMS
+projects:
+  - path: ArasHRMS.Host/ArasHRMS.Host.tsproj
+`,
+      );
+
+      const workspace = TsWorkspace.loadSync(tswPath);
+      const graph = ProjectGraph.fromWorkspace(workspace);
+
+      // Should succeed using fallback typeRoots from @tsnx/build
+      const result = await BuildOrchestrator.buildWorkspace(workspace, graph);
+      assert.ok(result.success);
+      assert.ok(fs.existsSync(path.join(hostDir, 'dist', 'main.js')));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
+

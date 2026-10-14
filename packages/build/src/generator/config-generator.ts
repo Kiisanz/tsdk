@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { ProjectGraph, TsProject, TsWorkspace } from '@tsnx/core';
 import {
@@ -27,6 +28,20 @@ export function relPosix(
 }
 
 export class ConfigGenerator {
+  static getFallbackTypeRoots(): string[] {
+    try {
+      const req = createRequire(import.meta.url);
+      const pkgPath = req.resolve('@types/node/package.json');
+      const typesDir = path.dirname(path.dirname(pkgPath));
+      if (fs.existsSync(typesDir)) {
+        return [typesDir];
+      }
+    } catch {
+      // Fallback not available
+    }
+    return [];
+  }
+
   static generateWorkspaceConfigs(
     workspace: TsWorkspace,
     graph: ProjectGraph,
@@ -57,6 +72,22 @@ export class ConfigGenerator {
 
       const customCompiler = project.manifest.spec.compiler ?? {};
 
+      const candidateTypeRoots: string[] = [];
+      const projectTypes = path.resolve(project.directory, 'node_modules', '@types');
+      candidateTypeRoots.push(relPosix(generatedDir, projectTypes));
+
+      const wsTypes = path.resolve(workspace.directory, 'node_modules', '@types');
+      if (wsTypes !== projectTypes) {
+        candidateTypeRoots.push(relPosix(generatedDir, wsTypes));
+      }
+
+      for (const fb of ConfigGenerator.getFallbackTypeRoots()) {
+        const posixFb = toPosix(fb);
+        if (!candidateTypeRoots.includes(posixFb)) {
+          candidateTypeRoots.push(posixFb);
+        }
+      }
+
       const compilerOptions: TsConfigOptions = {
         composite: true,
         target: (customCompiler.target as string) ?? 'ES2022',
@@ -71,6 +102,7 @@ export class ConfigGenerator {
         rootDir: relPosix(generatedDir, absSourceRoot),
         outDir: relPosix(generatedDir, absOutDir),
         tsBuildInfoFile: relPosix(generatedDir, absBuildInfo),
+        typeRoots: candidateTypeRoots,
         ...customCompiler,
       };
 
@@ -127,6 +159,12 @@ export class ConfigGenerator {
       const absDepBuildInfo = path.resolve(dep.directory, 'dist', '.tsbuildinfo');
       const depCompiler = dep.manifest.spec.compiler ?? {};
 
+      const depTypes = path.resolve(dep.directory, 'node_modules', '@types');
+      const depCandidateTypeRoots = [
+        relPosix(generatedDir, depTypes),
+        ...ConfigGenerator.getFallbackTypeRoots().map(toPosix),
+      ];
+
       const depConfig: TsConfigSchema = {
         compilerOptions: {
           composite: true,
@@ -142,6 +180,7 @@ export class ConfigGenerator {
           rootDir: relPosix(generatedDir, absDepSourceRoot),
           outDir: relPosix(generatedDir, absDepOutDir),
           tsBuildInfoFile: relPosix(generatedDir, absDepBuildInfo),
+          typeRoots: depCandidateTypeRoots,
           ...depCompiler,
         },
         include: [`${relPosix(generatedDir, absDepSourceRoot)}/**/*`],
@@ -158,6 +197,17 @@ export class ConfigGenerator {
     const absOutDir = path.resolve(project.directory, 'dist');
     const absBuildInfo = path.resolve(project.directory, 'dist', '.tsbuildinfo');
     const customCompiler = project.manifest.spec.compiler ?? {};
+
+    const candidateTypeRoots: string[] = [];
+    const projectTypes = path.resolve(project.directory, 'node_modules', '@types');
+    candidateTypeRoots.push(relPosix(generatedDir, projectTypes));
+
+    for (const fb of ConfigGenerator.getFallbackTypeRoots()) {
+      const posixFb = toPosix(fb);
+      if (!candidateTypeRoots.includes(posixFb)) {
+        candidateTypeRoots.push(posixFb);
+      }
+    }
 
     const projectReferences: TsConfigReference[] = dependencies.map((dep) => ({
       path: `./${dep.name}.tsconfig.json`,
@@ -179,6 +229,7 @@ export class ConfigGenerator {
         rootDir: relPosix(generatedDir, absSourceRoot),
         outDir: relPosix(generatedDir, absOutDir),
         tsBuildInfoFile: relPosix(generatedDir, absBuildInfo),
+        typeRoots: candidateTypeRoots,
         ...customCompiler,
       },
       include: [`${relPosix(generatedDir, absSourceRoot)}/**/*`],

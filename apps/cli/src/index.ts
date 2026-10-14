@@ -21,7 +21,7 @@ Usage:
   tsnx <command> [options]
 
 Commands:
-  create <template> <name>   Create a new project (templates: console, library, webapi)
+  create <template> <name>   Create a new project (options: --no-install, --package-manager)
   run [args...]              Build and run the project executable
   watch [args...]            Watch for changes, rebuild incrementally, and restart app
   test                       Run project tests using dependency graph
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'create':
-      exitCode = runCreate(subCommand, rawArgs[2], context);
+      exitCode = runCreate(rawArgs.slice(1), context);
       break;
 
     case 'run': {

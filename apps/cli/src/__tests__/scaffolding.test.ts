@@ -23,7 +23,8 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
           encoding: 'utf-8',
         },
       );
-      assert.ok(createOutput.includes('Created console project "HelloWorld"'));
+      assert.ok(createOutput.includes('Project scaffolded'));
+      assert.ok(createOutput.includes('Project created successfully!'));
 
       const projectDir = path.join(tmpDir, 'HelloWorld');
       assert.ok(fs.existsSync(path.join(projectDir, 'HelloWorld.tsproj')));
@@ -60,7 +61,8 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
           encoding: 'utf-8',
         },
       );
-      assert.ok(createOutput.includes('Created library project "MyLib"'));
+      assert.ok(createOutput.includes('Project scaffolded'));
+      assert.ok(createOutput.includes('Project created successfully!'));
 
       const projectDir = path.join(tmpDir, 'MyLib');
       assert.ok(fs.existsSync(path.join(projectDir, 'MyLib.tsproj')));
@@ -230,7 +232,8 @@ console.log('Calculation:', add(10, 25));
           encoding: 'utf-8',
         },
       );
-      assert.ok(createOutput.includes('Created webapi project "MyApi"'));
+      assert.ok(createOutput.includes('Project scaffolded'));
+      assert.ok(createOutput.includes('Project created successfully!'));
 
       const apiDir = path.join(tmpDir, 'MyApi');
       assert.ok(fs.existsSync(path.join(apiDir, 'MyApi.tsproj')));
@@ -249,12 +252,18 @@ console.log('Calculation:', add(10, 25));
 
       const apiModules = path.join(apiDir, 'node_modules', '@tsnx');
       fs.mkdirSync(apiModules, { recursive: true });
+      if (fs.existsSync(path.join(apiModules, 'web'))) {
+        fs.rmSync(path.join(apiModules, 'web'), { recursive: true, force: true });
+      }
+      if (fs.existsSync(path.join(apiModules, 'hosting'))) {
+        fs.rmSync(path.join(apiModules, 'hosting'), { recursive: true, force: true });
+      }
       fs.symlinkSync(webPkgDir, path.join(apiModules, 'web'), 'junction');
       fs.symlinkSync(hostingPkgDir, path.join(apiModules, 'hosting'), 'junction');
 
       // Link node_modules/@types
       const monorepoTypes = path.join(monorepoRoot, 'node_modules', '@types');
-      if (fs.existsSync(monorepoTypes)) {
+      if (fs.existsSync(monorepoTypes) && !fs.existsSync(path.join(apiDir, 'node_modules', '@types'))) {
         fs.symlinkSync(monorepoTypes, path.join(apiDir, 'node_modules', '@types'), 'junction');
       }
 

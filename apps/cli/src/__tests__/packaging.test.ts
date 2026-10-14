@@ -54,7 +54,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(packOutput.includes(`@tsnx/${name}@0.2.0`), `Failed packing @tsnx/${name}: ${packOutput}`);
+        assert.ok(packOutput.includes(`@tsnx/${name}@0.2.1`), `Failed packing @tsnx/${name}: ${packOutput}`);
         
         // Find produced .tgz
         const files = fs.readdirSync(stageDir);
@@ -120,7 +120,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
           cwd: consumerDir,
           encoding: 'utf-8',
         });
-        assert.ok(versionOutput.includes('0.2.0'));
+        assert.ok(versionOutput.includes('0.2.1'));
 
         // B. Consumer: Console Application (create -> build -> run)
         const createConsoleOutput = execFileSync(
@@ -131,7 +131,8 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(createConsoleOutput.includes('Created console project "MyConsole"'));
+        assert.ok(createConsoleOutput.includes('Project scaffolded'));
+        assert.ok(createConsoleOutput.includes('Project created successfully!'));
 
         const consoleDir = path.join(consumerDir, 'MyConsole');
         assert.ok(fs.existsSync(path.join(consoleDir, 'MyConsole.tsproj')));
@@ -161,7 +162,8 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(createLibOutput.includes('Created library project "MyLib"'));
+        assert.ok(createLibOutput.includes('Project scaffolded'));
+        assert.ok(createLibOutput.includes('Project created successfully!'));
 
         const libDir = path.join(consumerDir, 'MyLib');
         // Add a unit test to MyLib
@@ -206,7 +208,8 @@ it('adds two numbers correctly', () => {
             encoding: 'utf-8',
           },
         );
-        assert.ok(createApiOutput.includes('Created webapi project "MyApi"'));
+        assert.ok(createApiOutput.includes('Project scaffolded'));
+        assert.ok(createApiOutput.includes('Project created successfully!'));
 
         const apiDir = path.join(consumerDir, 'MyApi');
         // Install @tsnx/web and @tsnx/hosting in MyApi using the tarballs

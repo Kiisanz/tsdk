@@ -29,6 +29,7 @@ export interface TsConfigOptions {
   tsBuildInfoFile?: string;
   skipLibCheck?: boolean;
   esModuleInterop?: boolean;
+  typeRoots?: string[];
   [key: string]: unknown;
 }
 
