@@ -166,7 +166,7 @@ spec:
         type: 'module',
         main: './dist/main.js',
         dependencies: {
-          '@tsnx/web': '0.2.0-alpha.2',
+          '@tsnx/web': '0.2.0-alpha.3',
         },
         devDependencies: {
           '@types/node': '^22.13.9',
