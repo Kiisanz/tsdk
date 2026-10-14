@@ -1,6 +1,6 @@
 {
   "name": "@tsnx/core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "TSNX Core - Project, Workspace, and Project Graph engine",
   "license": "MIT",
   "type": "module",
