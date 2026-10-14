@@ -6,6 +6,9 @@ import { bindBody } from '../binding/body-binder.js';
 import { bindQuery } from '../binding/query-binder.js';
 import { bindRoute } from '../binding/route-binder.js';
 import { BindingSchema, Infer } from '../binding/types.js';
+import { RequestBindingException } from '../binding/binding-error.js';
+import { ProblemDetailsInput, BadHttpRequestException } from '../errors/types.js';
+import { formatProblemDetails } from '../errors/problem-details.js';
 
 export class HttpRequest {
   public readonly method: string;
@@ -55,9 +58,10 @@ export class HttpRequest {
       const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       totalSize += bufferChunk.length;
       if (totalSize > this.maxBodySizeBytes) {
-        const error = new Error(`Payload Too Large: exceeded maximum size of ${this.maxBodySizeBytes} bytes`);
-        (error as any).statusCode = 413;
-        throw error;
+        throw new BadHttpRequestException(
+          `Payload Too Large: exceeded maximum size of ${this.maxBodySizeBytes} bytes`,
+          413
+        );
       }
       chunks.push(bufferChunk);
     }
@@ -75,14 +79,26 @@ export class HttpRequest {
     try {
       return JSON.parse(text) as T;
     } catch (err: any) {
-      const error = new Error(`Malformed JSON body: ${err.message}`);
-      (error as any).statusCode = 400;
-      throw error;
+      throw new BadHttpRequestException(`Malformed JSON body: ${err.message}`, 400);
     }
   }
 
   public async bindBody<T extends BindingSchema>(schema: T): Promise<Infer<T>> {
-    const rawJson = await this.readJson<unknown>();
+    let rawJson: unknown;
+    try {
+      rawJson = await this.readJson<unknown>();
+    } catch (err: unknown) {
+      if (err instanceof BadHttpRequestException && err.statusCode === 400) {
+        throw new RequestBindingException([
+          {
+            source: 'body',
+            path: '$',
+            message: err.message,
+          },
+        ]);
+      }
+      throw err;
+    }
     return bindBody(schema, rawJson);
   }
 
@@ -279,6 +295,15 @@ export class HttpResponse {
     }
 
     this.res.end(json);
+  }
+
+  public async writeProblem(input: ProblemDetailsInput): Promise<void> {
+    if (this.res.headersSent || this.res.writableEnded) {
+      return;
+    }
+    const problem = formatProblemDetails(input);
+    this.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+    await this.writeJson(problem, problem.status);
   }
 
   public async writeText(text: string, statusCode = 200, contentType = 'text/plain; charset=utf-8'): Promise<void> {

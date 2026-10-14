@@ -7,6 +7,8 @@ import {
   IServiceProviderRoot,
   ServiceProviderOptions,
   HostOptions,
+  Constructor,
+  IServiceProvider,
 } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
@@ -14,7 +16,11 @@ import { Middleware, MiddlewarePipeline, RequestDelegate } from '../middleware/p
 import { createExceptionHandlerMiddleware } from '../middleware/exception-handler.js';
 import { Router } from '../routing/router.js';
 import { HttpServerHostedService, HttpServerOptions } from '../server/http-server.js';
-import { RequestBindingException } from '../binding/index.js';
+import {
+  IExceptionHandler,
+  EXCEPTION_HANDLER_TOKEN,
+  ExceptionHandlerPipeline,
+} from '../errors/index.js';
 
 export class WebApplicationBuilder {
   private readonly builder: HostApplicationBuilder;
@@ -54,6 +60,14 @@ export class WebApplicationBuilder {
     return this;
   }
 
+  public addExceptionHandler<T extends IExceptionHandler>(
+    handler: Constructor<T> | ((sp: IServiceProvider) => T),
+    ...dependencies: any[]
+  ): this {
+    this.services.addExceptionHandler(handler, ...dependencies);
+    return this;
+  }
+
   public build(options?: ServiceProviderOptions): WebApplication {
     if (options) {
       this.builder.configureServiceProvider(options);
@@ -61,8 +75,16 @@ export class WebApplicationBuilder {
     const router = new Router();
     const pipeline = new MiddlewarePipeline();
 
-    // Default exception handler
-    pipeline.use(createExceptionHandlerMiddleware());
+    // Default exception handler pipeline
+    const handlerDescriptors = this.builder.services.findAll(EXCEPTION_HANDLER_TOKEN);
+    const logger = this.builder.logging.createLogger('ExceptionHandler');
+    const isDev =
+      this.builder.config.get('Environment') === 'Development' ||
+      process.env.NODE_ENV === 'development';
+    const exceptionPipeline = new ExceptionHandlerPipeline(handlerDescriptors, logger, {
+      includeDetails: isDev,
+    });
+    pipeline.use(createExceptionHandlerMiddleware(exceptionPipeline));
 
     return new WebApplication(this.builder, router, pipeline, this.serverOptions);
   }
@@ -177,22 +199,11 @@ export class WebApplication {
       // Route matched
       ctx.params = routingResult.match.params;
       ctx.request.params = ctx.params;
-      try {
-        const result = await routingResult.match.handler(ctx);
-        if (result && typeof result.executeAsync === 'function') {
-          if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
-            await result.executeAsync(ctx);
-          }
+      const result = await routingResult.match.handler(ctx);
+      if (result && typeof result.executeAsync === 'function') {
+        if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
+          await result.executeAsync(ctx);
         }
-      } catch (err: unknown) {
-        if (err instanceof RequestBindingException) {
-          if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
-            ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
-            await ctx.response.writeJson(err.toProblemDetails(), 400);
-            return;
-          }
-        }
-        throw err;
       }
     };
 
