@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { ProjectGraph, TsProject, TsWorkspace, isNativeProject, isNativeWorkspace } from '@tsnx/core';
@@ -37,6 +38,7 @@ export class BuildOrchestrator {
     let generatedConfig: any = undefined;
 
     if (isNativeWorkspace(workspace.directory)) {
+      this.ensureTypeDefinitionsBridge(workspace.directory);
       buildTargetConfig = path.join(workspace.directory, 'tsconfig.json');
     } else {
       // 1. Generate tsconfig files in .tsdk/generated/
@@ -93,6 +95,7 @@ export class BuildOrchestrator {
     let generatedConfig: any = undefined;
 
     if (isNativeProject(project.directory)) {
+      this.ensureTypeDefinitionsBridge(project.directory);
       buildTargetConfig = path.join(project.directory, 'tsconfig.json');
     } else {
       // 1. Generate tsconfig files in .tsdk/generated/
@@ -150,6 +153,7 @@ export class BuildOrchestrator {
     let generatedConfig: any = undefined;
 
     if (isNativeProject(project.directory)) {
+      this.ensureTypeDefinitionsBridge(project.directory);
       buildTargetConfig = path.join(project.directory, 'tsconfig.json');
     } else {
       // 1. Generate standalone tsconfig files
@@ -233,5 +237,20 @@ export class BuildOrchestrator {
         resolve({ exitCode: 1, output: err.message });
       });
     });
+  }
+
+  private static ensureTypeDefinitionsBridge(targetDir: string): void {
+    const localTypes = path.join(targetDir, 'node_modules', '@types');
+    if (!fs.existsSync(localTypes)) {
+      const fallbacks = ConfigGenerator.getFallbackTypeRoots();
+      if (fallbacks.length > 0 && fs.existsSync(fallbacks[0])) {
+        try {
+          fs.mkdirSync(path.dirname(localTypes), { recursive: true });
+          fs.symlinkSync(fallbacks[0], localTypes, 'junction');
+        } catch {
+          // Ignore if symlink fails or not supported
+        }
+      }
+    }
   }
 }

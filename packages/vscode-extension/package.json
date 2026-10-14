@@ -2,7 +2,7 @@
   "name": "vscode-tsnx",
   "displayName": "TSNX",
   "description": "Official Visual Studio Code extension for TSNX (TypeScript Next) Framework",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "publisher": "tsnx",
   "license": "MIT",

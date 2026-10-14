@@ -64,6 +64,7 @@ export class TemplateGenerator {
         outDir: 'dist',
         strict: true,
         skipLibCheck: true,
+        types: ['node'],
       },
       include: ['src/**/*.ts'],
       references: [],
