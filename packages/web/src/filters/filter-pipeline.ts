@@ -63,7 +63,8 @@ export class EndpointFilterPipeline {
       }
 
       // If class is not registered in DI, only allow parameterless instantiation.
-      // If constructor expects dependencies (length > 0), fail fast with an explicit error.
+      // NOTE: Function.length does not count parameters with default values or rest parameters.
+      // Classes with dependencies should always be explicitly registered via DI (e.g. builder.services.addScoped) or factory.
       if (filterItem.length > 0) {
         throw new Error(
           `Endpoint filter '${filterItem.name}' has constructor dependencies (expected ${filterItem.length}) but is not registered in the DI container. Register it with 'builder.services.addScoped(${filterItem.name})' or provide a factory.`
