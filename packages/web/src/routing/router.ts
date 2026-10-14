@@ -1,4 +1,6 @@
 import { RouteHandler } from '../http/results.js';
+import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
+import { EndpointArgumentDescriptor } from '../descriptors/types.js';
 
 interface RouteSegment {
   isParam: boolean;
@@ -9,12 +11,16 @@ interface RouteEntry {
   method: string;
   pattern: string;
   segments: RouteSegment[];
-  handler: RouteHandler;
+  handler: (...args: any[]) => any;
+  descriptors?: readonly EndpointArgumentDescriptor[];
+  builder?: RouteHandlerBuilder;
 }
 
 export interface RouteMatch {
-  handler: RouteHandler;
+  handler: (...args: any[]) => any;
   params: Record<string, string>;
+  descriptors?: readonly EndpointArgumentDescriptor[];
+  builder?: RouteHandlerBuilder;
   isHeadAuto?: boolean;
 }
 
@@ -44,7 +50,13 @@ function normalizePath(path: string): string[] {
 export class Router {
   private readonly routes: RouteEntry[] = [];
 
-  public map(method: string, pattern: string, handler: RouteHandler): this {
+  public map(
+    method: string,
+    pattern: string,
+    handler: (...args: any[]) => any,
+    descriptors?: readonly EndpointArgumentDescriptor[],
+    builder?: RouteHandlerBuilder
+  ): this {
     const upperMethod = method.toUpperCase();
     const normalizedPattern = pattern.startsWith('/') ? pattern : `/${pattern}`;
 
@@ -60,6 +72,8 @@ export class Router {
       pattern: normalizedPattern,
       segments,
       handler,
+      descriptors,
+      builder,
     });
 
     // Sort routes: static segments have higher priority than parameter segments
@@ -161,6 +175,8 @@ export class Router {
         match: {
           handler: exactMatch.route.handler,
           params: exactMatch.params,
+          descriptors: exactMatch.route.descriptors,
+          builder: exactMatch.route.builder,
         },
       };
     }
@@ -174,6 +190,8 @@ export class Router {
           match: {
             handler: getMatch.route.handler,
             params: getMatch.params,
+            descriptors: getMatch.route.descriptors,
+            builder: getMatch.route.builder,
             isHeadAuto: true,
           },
         };
