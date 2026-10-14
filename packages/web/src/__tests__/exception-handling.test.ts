@@ -1,5 +1,6 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import {
   WebApplication,
   Results,
@@ -463,5 +464,199 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     assert.strictEqual(json.status, 418);
     assert.strictEqual(json.title, "I'm a teapot");
     assert.strictEqual(json.detail, 'Factory resolved handler');
+  });
+
+  // --------------------------------------------------------------------------
+  // 13. Invariant: Custom handler must NOT swallow timeout cancellation
+  // --------------------------------------------------------------------------
+  it('13. custom exception handler does not swallow timeout cancellation (upholds 503)', async () => {
+    class SlowDomainError extends Error {}
+
+    let handlerAttemptedHandling = false;
+
+    class DomainHandler implements IExceptionHandler {
+      async tryHandleAsync(ctx: HttpContext, error: unknown): Promise<boolean> {
+        if (error instanceof SlowDomainError) {
+          handlerAttemptedHandling = true;
+          // Handler attempts to respond with a 400
+          await ctx.response.writeProblem({
+            status: 400,
+            title: 'Domain Error Handled',
+          });
+          return true;
+        }
+        return false;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    // Set 50ms execution timeout
+    builder.configureServer({ requestExecutionTimeoutMs: 50 });
+    builder.services.addExceptionHandler(DomainHandler);
+    app = builder.build();
+
+    app.mapGet('/slow-domain-failure', async (_ctx) => {
+      // Simulate handler taking longer than timeout before throwing
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      throw new SlowDomainError('Late domain failure after timeout triggered');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/slow-domain-failure`);
+    // Framework MUST maintain 503 Timeout decision, NOT 400 from custom handler!
+    assert.strictEqual(res.status, 503);
+    const json = await res.json() as any;
+    assert.strictEqual(json.status, 503);
+    assert.strictEqual(json.type, 'https://tsnx.dev/problems/timeout');
+    assert.strictEqual(json.title, 'Service Unavailable');
+    // Handler attempted handling was suppressed or bypassed by cancellation boundary
+    assert.strictEqual(handlerAttemptedHandling, false);
+  });
+
+  // --------------------------------------------------------------------------
+  // 14. Invariant: Custom handler must NOT swallow client disconnect cancellation
+  // --------------------------------------------------------------------------
+  it('14. custom exception handler does not swallow client disconnect cancellation', async () => {
+    class UserDomainError extends Error {}
+
+    let handlerCalled = false;
+
+    class DisconnectDomainHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, error: unknown): boolean {
+        if (error instanceof UserDomainError) {
+          handlerCalled = true;
+          ctx.response.writeProblem({ status: 400, title: 'Swallowed Error' });
+          return true;
+        }
+        return false;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(DisconnectDomainHandler);
+    app = builder.build();
+
+    let handlerStartedResolve: () => void;
+    const handlerStarted = new Promise<void>((r) => {
+      handlerStartedResolve = r;
+    });
+
+    app.mapGet('/client-abort-error', async (ctx) => {
+      handlerStartedResolve();
+      // Wait until client disconnects
+      await new Promise<void>((resolve) => {
+        ctx.request.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+      throw new UserDomainError('Domain error on disconnected client');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: '/client-abort-error',
+      method: 'GET',
+    });
+    req.on('error', () => {});
+    req.end();
+
+    await handlerStarted;
+    // Destroy client request to simulate abrupt client disconnect
+    req.destroy();
+
+    // Give pipeline a moment to settle
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Custom domain handler must NOT have been called because cancellation was preserved!
+    assert.strictEqual(handlerCalled, false);
+  });
+
+  // --------------------------------------------------------------------------
+  // 15. Invariant: tryHandleAsync() returning false after starting response is a contract violation
+  // --------------------------------------------------------------------------
+  it('15. tryHandleAsync() returning false after starting response terminates pipeline safely', async () => {
+    let secondHandlerInvoked = false;
+
+    class BuggyViolatingHandler implements IExceptionHandler {
+      async tryHandleAsync(ctx: HttpContext, _error: unknown): Promise<boolean> {
+        // Violating contract: writes headers/body then returns false
+        ctx.response.setHeader('X-Buggy', 'started');
+        await ctx.response.writeText('Corrupting partial write');
+        return false;
+      }
+    }
+
+    class SecondHandler implements IExceptionHandler {
+      tryHandleAsync(_ctx: HttpContext, _error: unknown): boolean {
+        secondHandlerInvoked = true;
+        return true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(BuggyViolatingHandler);
+    builder.services.addExceptionHandler(SecondHandler);
+    app = builder.build();
+
+    app.mapGet('/contract-violation', () => {
+      throw new Error('Trigger violation');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/contract-violation`);
+    // First handler committed the text
+    assert.strictEqual(res.status, 200);
+    // Crucial: second handler was NOT invoked because headers were already committed!
+    assert.strictEqual(secondHandlerInvoked, false);
+  });
+
+  // --------------------------------------------------------------------------
+  // 16. Invariant: tryHandleAsync() returning false with uncommitted header mutations reverts them
+  // --------------------------------------------------------------------------
+  it('16. tryHandleAsync() returning false with uncommitted header mutations reverts them for next handler', async () => {
+    class MutatingHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Mutates headers and status code but does not commit/start response
+        ctx.response.setHeader('X-Polluted-Header', 'should-be-removed');
+        ctx.response.statusCode = 418;
+        return false;
+      }
+    }
+
+    class LegitimateHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Verify polluted header was cleaned up before this handler was called!
+        assert.strictEqual(ctx.response.getHeader('X-Polluted-Header'), undefined);
+        ctx.response.writeProblem({
+          status: 404,
+          title: 'Clean Response',
+        });
+        return true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(MutatingHandler);
+    builder.services.addExceptionHandler(LegitimateHandler);
+    app = builder.build();
+
+    app.mapGet('/clean-state-check', () => {
+      throw new Error('Check clean state');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/clean-state-check`);
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(res.headers.get('x-polluted-header'), null);
+    const json = await res.json() as any;
+    assert.strictEqual(json.title, 'Clean Response');
   });
 });

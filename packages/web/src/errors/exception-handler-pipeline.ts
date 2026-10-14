@@ -32,33 +32,11 @@ export class ExceptionHandlerPipeline {
     }
 
     // Step 1: Cancellation Boundary
-    // 1.1 Client disconnect / Abort: suppress response and 500 error logging
-    const isAbort =
-      (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'AbortError') ||
-      (error instanceof Error && error.name === 'AbortError');
-
-    if (isAbort) {
-      if (this.logger) {
-        this.logger.debug?.(`Request aborted by client: [${ctx.request.method}] ${ctx.request.url}`);
-      }
-      return;
-    }
-
-    // 1.2 Request Execution Timeout: 503 Problem Details
-    const isTimeout =
-      (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'TimeoutError') ||
-      (error instanceof Error && error.name === 'TimeoutError');
-
-    if (isTimeout) {
-      if (this.logger) {
-        this.logger.warn(`Request execution timeout: [${ctx.request.method}] ${ctx.request.url}`);
-      }
-      await ctx.response.writeProblem({
-        type: 'https://tsnx.dev/problems/timeout',
-        title: 'Service Unavailable',
-        status: 503,
-        detail: 'The request execution timed out.',
-      });
+    if (
+      ctx.request.signal.aborted ||
+      (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError'))
+    ) {
+      await this.handleCancellationBoundary(ctx, error);
       return;
     }
 
@@ -85,14 +63,59 @@ export class ExceptionHandlerPipeline {
     // Step 3: Custom Exception Handlers Chain (FIFO)
     let handled = false;
     for (const item of this.handlers) {
+      // Invariant 1: Ensure custom handler does not proceed if request was cancelled
+      if (ctx.request.signal.aborted) {
+        await this.handleCancellationBoundary(ctx);
+        return;
+      }
+
       let handlerInstance: IExceptionHandler | undefined;
+      const startedBefore = ctx.response.hasStarted;
+      const statusBefore = ctx.response.statusCode;
+      const headerNamesBefore = new Set(ctx.response.raw.getHeaderNames());
+
       try {
         handlerInstance = this.resolveHandler(ctx, item);
         if (handlerInstance && typeof handlerInstance.tryHandleAsync === 'function') {
           const result = await handlerInstance.tryHandleAsync(ctx, error);
+
+          // Invariant 1: Custom handler must not swallow cancellation!
+          // If request was cancelled before or during handler execution, framework must uphold cancellation decision.
+          if (ctx.request.signal.aborted) {
+            if (this.logger) {
+              this.logger.debug?.(
+                `Cancellation occurred during or before ExceptionHandler '${handlerInstance.constructor.name}'. Preserving cancellation decision.`
+              );
+            }
+            await this.handleCancellationBoundary(ctx);
+            return;
+          }
+
           if (result === true) {
             handled = true;
             break;
+          }
+
+          // Invariant 2: tryHandleAsync() returning false MUST NOT modify the response!
+          if (result === false) {
+            if (ctx.response.hasStarted && !startedBefore) {
+              const violationMsg = `ExceptionHandler '${handlerInstance.constructor.name}' violated contract: response was started (headers sent) but returned false. Handlers returning false must not modify the response.`;
+              if (this.logger) {
+                this.logger.error(violationMsg);
+              }
+              if (!ctx.response.raw.writableEnded) {
+                ctx.response.raw.destroy(new Error(violationMsg));
+              }
+              return;
+            }
+
+            // If response has not started, clean up any headers or status code mutated by the handler
+            for (const name of ctx.response.raw.getHeaderNames()) {
+              if (!headerNamesBefore.has(name)) {
+                ctx.response.removeHeader(name);
+              }
+            }
+            ctx.response.statusCode = statusBefore;
           }
         }
       } catch (handlerErr: unknown) {
@@ -131,6 +154,47 @@ export class ExceptionHandlerPipeline {
     }
 
     await this.fallbackInternalServerError(ctx, error);
+  }
+
+  private async handleCancellationBoundary(ctx: HttpContext, error?: unknown): Promise<void> {
+    const isAbort =
+      (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError');
+
+    if (isAbort) {
+      if (this.logger) {
+        this.logger.debug?.(`Request aborted by client: [${ctx.request.method}] ${ctx.request.url}`);
+      }
+      if (!ctx.response.raw.writableEnded) {
+        ctx.response.raw.destroy(error instanceof Error ? error : ctx.request.signal.reason);
+      }
+      return;
+    }
+
+    const isTimeout =
+      (ctx.request.signal.aborted && ctx.request.signal.reason?.name === 'TimeoutError') ||
+      (error instanceof Error && error.name === 'TimeoutError');
+
+    if (isTimeout) {
+      if (this.logger) {
+        this.logger.warn(`Request execution timeout: [${ctx.request.method}] ${ctx.request.url}`);
+      }
+      if (!ctx.response.hasStarted && !ctx.response.raw.writableEnded) {
+        ctx.response.raw.statusCode = 503;
+        ctx.response.raw.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+        ctx.response.raw.end(
+          JSON.stringify({
+            type: 'https://tsnx.dev/problems/timeout',
+            title: 'Service Unavailable',
+            status: 503,
+            detail: 'The request execution timed out.',
+          })
+        );
+      } else if (!ctx.response.raw.writableEnded) {
+        ctx.response.raw.destroy(error instanceof Error ? error : ctx.request.signal.reason);
+      }
+      return;
+    }
   }
 
   private resolveHandler(ctx: HttpContext, item: HandlerDescriptorOrType): IExceptionHandler | undefined {
