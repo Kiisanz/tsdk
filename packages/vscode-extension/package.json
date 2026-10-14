@@ -3,6 +3,7 @@
   "displayName": "TSNX",
   "description": "Official Visual Studio Code extension for TSNX (TypeScript Next) Framework",
   "version": "0.3.0",
+  "private": true,
   "publisher": "tsnx",
   "license": "MIT",
   "repository": {
@@ -89,6 +90,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node esbuild.config.js",
-    "test": "node --test dist/__tests__/**/*.test.js"
+    "test": "node --test dist/__tests__"
   }
 }

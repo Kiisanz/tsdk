@@ -31,7 +31,7 @@
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --test --test-concurrency=1 dist/__tests__/**/*.test.js"
+    "test": "node --test dist/__tests__"
   },
   "dependencies": {
     "@tsnx/build": "workspace:*",

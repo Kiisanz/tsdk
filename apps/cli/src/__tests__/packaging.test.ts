@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const monorepoRoot = path.resolve(__dirname, '../../../..');
+const isWindows = process.platform === 'win32';
+const pnpmCmd = isWindows ? 'pnpm.cmd' : 'pnpm';
+const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 
 function httpGet(url: string): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
@@ -47,11 +50,12 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
       for (const { name, pkgDir } of packagesToPack) {
         // Run pnpm pack inside stageDir to output tarball there
         const packOutput = execFileSync(
-          'pnpm',
+          pnpmCmd,
           ['pack', '--pack-destination', stageDir],
           {
             cwd: pkgDir,
             encoding: 'utf-8',
+            shell: isWindows,
           },
         );
         assert.ok(packOutput.includes(`@tsnx/${name}@0.3.0`), `Failed packing @tsnx/${name}: ${packOutput}`);
@@ -65,7 +69,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
 
       // 2. Package Integrity: Verify tarball contents using tar -tf
       for (const [name, tgzPath] of Object.entries(tarballPaths)) {
-        const fileList = execFileSync('tar', ['-tf', tgzPath], { encoding: 'utf-8' }).split('\n').filter(Boolean);
+        const fileList = execFileSync('tar', ['-tf', tgzPath], { encoding: 'utf-8' }).split(/\r?\n/).filter(Boolean);
         
         // Must contain package.json, README.md, and dist/
         assert.ok(fileList.includes('package/package.json'), `${name} tarball missing package.json`);
@@ -106,19 +110,21 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
 
         // Install all 5 tarballs simultaneously using npm
         const allTarballs = Object.values(tarballPaths);
-        execFileSync('npm', ['install', '--no-package-lock', ...allTarballs], {
+        execFileSync(npmCmd, ['install', '--no-package-lock', ...allTarballs], {
           cwd: consumerDir,
           encoding: 'utf-8',
           stdio: 'pipe',
+          shell: isWindows,
         });
 
-        const consumerTsnxBin = path.join(consumerDir, 'node_modules', '.bin', 'tsnx');
+        const consumerTsnxBin = path.join(consumerDir, 'node_modules', '.bin', isWindows ? 'tsnx.cmd' : 'tsnx');
         assert.ok(fs.existsSync(consumerTsnxBin), `tsnx bin not found at ${consumerTsnxBin}`);
 
         // A. Verify CLI version
         const versionOutput = execFileSync(consumerTsnxBin, ['--version'], {
           cwd: consumerDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(versionOutput.includes('0.3.0'));
 
@@ -129,6 +135,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
           {
             cwd: consumerDir,
             encoding: 'utf-8',
+            shell: isWindows,
           },
         );
         assert.ok(createConsoleOutput.includes('Project scaffolded'));
@@ -142,6 +149,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
         const buildConsoleOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: consoleDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(buildConsoleOutput.includes('Build succeeded'));
         assert.ok(fs.existsSync(path.join(consoleDir, 'dist', 'main.js')));
@@ -150,6 +158,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
         const runConsoleOutput = execFileSync(consumerTsnxBin, ['run'], {
           cwd: consoleDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(runConsoleOutput.includes('Hello from MyConsole!'));
 
@@ -160,6 +169,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
           {
             cwd: consumerDir,
             encoding: 'utf-8',
+            shell: isWindows,
           },
         );
         assert.ok(createLibOutput.includes('Project scaffolded'));
@@ -186,6 +196,7 @@ it('adds two numbers correctly', () => {
         const buildLibOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: libDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(buildLibOutput.includes('Build succeeded'));
         assert.ok(fs.existsSync(path.join(libDir, 'dist', 'index.js')));
@@ -195,6 +206,7 @@ it('adds two numbers correctly', () => {
         const testLibOutput = execFileSync(consumerTsnxBin, ['test'], {
           cwd: libDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(testLibOutput.includes('Running tests for "MyLib"'));
         assert.ok(testLibOutput.includes('All tests passed successfully.'));
@@ -206,6 +218,7 @@ it('adds two numbers correctly', () => {
           {
             cwd: consumerDir,
             encoding: 'utf-8',
+            shell: isWindows,
           },
         );
         assert.ok(createApiOutput.includes('Project scaffolded'));
@@ -214,12 +227,13 @@ it('adds two numbers correctly', () => {
         const apiDir = path.join(consumerDir, 'MyApi');
         // Install @tsnx/web and @tsnx/hosting in MyApi using the tarballs
         execFileSync(
-          'npm',
+          npmCmd,
           ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting],
           {
             cwd: apiDir,
             encoding: 'utf-8',
             stdio: 'pipe',
+            shell: isWindows,
           },
         );
 
@@ -227,6 +241,7 @@ it('adds two numbers correctly', () => {
         const buildApiOutput = execFileSync(consumerTsnxBin, ['build'], {
           cwd: apiDir,
           encoding: 'utf-8',
+          shell: isWindows,
         });
         assert.ok(buildApiOutput.includes('Build succeeded'));
         assert.ok(fs.existsSync(path.join(apiDir, 'dist', 'main.js')));
@@ -240,6 +255,7 @@ it('adds two numbers correctly', () => {
             PORT: String(testPort),
           },
           stdio: ['pipe', 'pipe', 'pipe'],
+          shell: isWindows,
         });
 
         try {
@@ -273,7 +289,15 @@ it('adds two numbers correctly', () => {
           assert.equal(healthJson.status, 'ok');
           assert.ok(healthJson.timestamp);
         } finally {
-          apiChild.kill('SIGINT');
+          try {
+            if (isWindows && apiChild.pid) {
+              execFileSync('taskkill', ['/pid', String(apiChild.pid), '/T', '/F'], { stdio: 'ignore' });
+            } else {
+              apiChild.kill('SIGINT');
+            }
+          } catch {
+            apiChild.kill();
+          }
           await new Promise((resolve) => {
             const timer = setTimeout(resolve, 2000);
             apiChild.on('close', () => {
