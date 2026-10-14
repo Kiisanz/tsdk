@@ -3,6 +3,7 @@ export * from './middleware/index.js';
 export * from './routing/index.js';
 export * from './server/index.js';
 export * from './app/index.js';
+export * from './binding/index.js';
 
 // Shared framework re-exports (ASP.NET Core style: DI, Config, Logging, Hosting)
 export * from '@tsnx/hosting';

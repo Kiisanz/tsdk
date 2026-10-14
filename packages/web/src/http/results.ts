@@ -130,4 +130,15 @@ export class Results {
   public static problem(title: string, statusCode: number, detail?: string, extensions?: Record<string, any>): HttpResult {
     return new ProblemResult(title, statusCode, detail, extensions);
   }
+
+  public static validationProblem(
+    errors: Record<string, string[]>,
+    title = 'One or more validation errors occurred.',
+    statusCode = 400
+  ): HttpResult {
+    return new ProblemResult(title, statusCode, undefined, {
+      type: 'https://tools.ietf.org/html/rfc9457',
+      errors,
+    });
+  }
 }

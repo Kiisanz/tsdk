@@ -14,6 +14,7 @@ import { Middleware, MiddlewarePipeline, RequestDelegate } from '../middleware/p
 import { createExceptionHandlerMiddleware } from '../middleware/exception-handler.js';
 import { Router } from '../routing/router.js';
 import { HttpServerHostedService, HttpServerOptions } from '../server/http-server.js';
+import { RequestBindingException } from '../binding/index.js';
 
 export class WebApplicationBuilder {
   private readonly builder: HostApplicationBuilder;
@@ -175,9 +176,19 @@ export class WebApplication {
 
       // Route matched
       ctx.params = routingResult.match.params;
-      const result = await routingResult.match.handler(ctx);
-      if (result && typeof result.executeAsync === 'function') {
-        await result.executeAsync(ctx);
+      ctx.request.params = ctx.params;
+      try {
+        const result = await routingResult.match.handler(ctx);
+        if (result && typeof result.executeAsync === 'function') {
+          await result.executeAsync(ctx);
+        }
+      } catch (err: unknown) {
+        if (err instanceof RequestBindingException) {
+          ctx.response.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
+          await ctx.response.writeJson(err.toProblemDetails(), 400);
+          return;
+        }
+        throw err;
       }
     };
 

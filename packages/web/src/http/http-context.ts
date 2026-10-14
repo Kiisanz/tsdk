@@ -2,6 +2,10 @@ import { IncomingMessage, ServerResponse, validateHeaderName, validateHeaderValu
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { IServiceProvider } from '@tsnx/hosting';
+import { bindBody } from '../binding/body-binder.js';
+import { bindQuery } from '../binding/query-binder.js';
+import { bindRoute } from '../binding/route-binder.js';
+import { BindingSchema, Infer } from '../binding/types.js';
 
 export class HttpRequest {
   public readonly method: string;
@@ -61,6 +65,8 @@ export class HttpRequest {
     return Buffer.concat(chunks).toString('utf-8');
   }
 
+  public params: Record<string, string> = {};
+
   public async readJson<T = any>(): Promise<T> {
     const text = await this.readText();
     if (!text || text.trim().length === 0) {
@@ -73,6 +79,19 @@ export class HttpRequest {
       (error as any).statusCode = 400;
       throw error;
     }
+  }
+
+  public async bindBody<T extends BindingSchema>(schema: T): Promise<Infer<T>> {
+    const rawJson = await this.readJson<unknown>();
+    return bindBody(schema, rawJson);
+  }
+
+  public bindQuery<T extends BindingSchema>(schema: T): Infer<T> {
+    return bindQuery(schema, this.query);
+  }
+
+  public bindRoute<T extends BindingSchema>(schema: T): Infer<T> {
+    return bindRoute(schema, this.params);
   }
 }
 
@@ -151,7 +170,9 @@ export class HttpResponse {
       return;
     }
 
-    this.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (!this.getHeader('Content-Type')) {
+      this.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
     const json = JSON.stringify(data);
     this.setHeader('Content-Length', Buffer.byteLength(json));
 
