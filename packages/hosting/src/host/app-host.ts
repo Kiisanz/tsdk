@@ -1,7 +1,7 @@
 import { IConfiguration } from '../config/types.js';
 import { IServiceProviderRoot } from '../di/types.js';
 import { HostedService } from '../hosted-services/types.js';
-import { HostLifecycleCoordinator } from '../lifecycle/host-lifetime.js';
+import { HostLifecycleCoordinator, HostApplicationLifetime } from '../lifecycle/host-lifetime.js';
 import { HostApplicationBuilder } from './host-application-builder.js';
 import { IHost } from './types.js';
 
@@ -48,6 +48,10 @@ export class AppHost implements IHost {
     return this.state;
   }
 
+  get lifetime(): HostApplicationLifetime {
+    return this.coordinator.lifetime;
+  }
+
   async start(): Promise<void> {
     if (this.state === HostState.Started) {
       return;
@@ -73,6 +77,14 @@ export class AppHost implements IHost {
         const wasShutdownRequested =
           this.state === HostState.Stopping ||
           this.coordinator.lifetime.applicationStopping.aborted;
+
+        // M-13: Clean up coordinator on startup failure (unregisters SIGINT/SIGTERM listeners and aborts applicationStopped)
+        try {
+          await this.coordinator.stop();
+        } catch {
+          // Suppress coordinator stop errors so original startup error is preserved
+        }
+
         this.state = HostState.Stopped;
         if (wasShutdownRequested && (err as any)?.name === 'AbortError') {
           return;
@@ -116,6 +128,9 @@ export class AppHost implements IHost {
 
   async stop(cancellationToken?: AbortSignal): Promise<void> {
     if (this.state === HostState.Stopped) {
+      if (!this.coordinator.lifetime.applicationStopped.aborted) {
+        await this.coordinator.stop(cancellationToken);
+      }
       return;
     }
     if (this.state === HostState.Stopping && this.stopPromise) {
@@ -145,6 +160,15 @@ export class AppHost implements IHost {
     // 1. Ensure host is stopped first
     try {
       await this.stop();
+    } catch (err) {
+      errors.push(err);
+    }
+
+    // Defensive: ensure coordinator is definitely stopped and signal listeners removed
+    try {
+      if (!this.coordinator.lifetime.applicationStopped.aborted) {
+        await this.coordinator.stop();
+      }
     } catch (err) {
       errors.push(err);
     }

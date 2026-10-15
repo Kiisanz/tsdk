@@ -273,4 +273,48 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
 
     assert.equal(disposeCount, 1, 'Service owned by DI must only be disposed once by container');
   });
+
+  it('M-13: startup failure in hosted service unregisters signal listeners and aborts applicationStopped', async () => {
+    const initialSigint = process.listenerCount('SIGINT');
+    const initialSigterm = process.listenerCount('SIGTERM');
+
+    const builder = AppHost.createBuilder();
+    // Default registers signal handlers
+    builder.addHostedService(() => ({
+      async start() {
+        throw new Error('STARTUP_FAIL');
+      },
+      async stop() {},
+    }));
+
+    const app = builder.build();
+    await assert.rejects(() => app.run());
+
+    assert.equal(app.currentState, 'stopped');
+    assert.equal(app.lifetime?.applicationStopped.aborted, true);
+    assert.equal(process.listenerCount('SIGINT'), initialSigint, 'SIGINT listeners must return to baseline');
+    assert.equal(process.listenerCount('SIGTERM'), initialSigterm, 'SIGTERM listeners must return to baseline');
+  });
+
+  it('M-13: multiple failed startup cycles (12x) do not accumulate signal listeners', async () => {
+    const initialSigint = process.listenerCount('SIGINT');
+    const initialSigterm = process.listenerCount('SIGTERM');
+
+    for (let i = 0; i < 12; i++) {
+      const builder = AppHost.createBuilder();
+      const OptionToken = Symbol(`OptionToken-${i}`);
+      builder.services.configure(OptionToken as any)
+        .validate(() => false, 'FAILED_OPTIONS')
+        .validateOnStart();
+
+      const app = builder.build();
+      await assert.rejects(() => app.run());
+
+      assert.equal(app.currentState, 'stopped');
+      assert.equal(app.lifetime?.applicationStopped.aborted, true);
+    }
+
+    assert.equal(process.listenerCount('SIGINT'), initialSigint, 'No SIGINT listeners must leak after 12 failed cycles');
+    assert.equal(process.listenerCount('SIGTERM'), initialSigterm, 'No SIGTERM listeners must leak after 12 failed cycles');
+  });
 });
