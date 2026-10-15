@@ -322,4 +322,102 @@ setInterval(() => {}, 1000);
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('M-17: tsnx run forwards repeated signals to running child', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-run-sig-repeat-'));
+
+    try {
+      execFileSync(process.execPath, [CLI_BIN, 'create', 'console', 'SigRepeatApp', '--no-install'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      });
+
+      const appDir = path.join(tmpDir, 'SigRepeatApp');
+      const mainPath = path.join(appDir, 'src', 'main.ts');
+
+      // The child listens to SIGTERM:
+      // - First SIGTERM: logs 'SIGTERM_COUNT_1', but keeps running (simulating slow graceful shutdown)
+      // - Second SIGTERM: logs 'SIGTERM_COUNT_2' and exits with 143
+      fs.writeFileSync(
+        mainPath,
+        `let count = 0;
+process.on('SIGTERM', () => {
+  count++;
+  console.log('SIGTERM_COUNT_' + count);
+  if (count >= 2) {
+    process.exit(143);
+  }
+});
+console.log('READY_FOR_REPEATED_SIGNAL');
+setInterval(() => {}, 1000);
+`,
+        'utf-8',
+      );
+
+      // Build app first
+      execFileSync(process.execPath, [CLI_BIN, 'build'], {
+        cwd: appDir,
+        encoding: 'utf-8',
+      });
+
+      // Run app via tsnx run
+      const cliChild = spawn(process.execPath, [CLI_BIN, 'run', '--no-build'], {
+        cwd: appDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let fullOutput = '';
+      cliChild.stdout?.on('data', (d: Buffer) => {
+        fullOutput += d.toString();
+      });
+
+      // Wait until child is running
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(() => {
+          if (fullOutput.includes('READY_FOR_REPEATED_SIGNAL')) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 50);
+        cliChild.on('error', (err) => {
+          clearInterval(interval);
+          reject(err);
+        });
+      });
+
+      // Send 1st SIGTERM
+      cliChild.kill('SIGTERM');
+
+      // Wait until child processes 1st SIGTERM
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(() => {
+          if (fullOutput.includes('SIGTERM_COUNT_1')) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 50);
+        cliChild.on('error', (err) => {
+          clearInterval(interval);
+          reject(err);
+        });
+      });
+
+      // Send 2nd SIGTERM
+      cliChild.kill('SIGTERM');
+
+      const exitStatus = await new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((resolve) => {
+        cliChild.on('close', (code, sig) => {
+          resolve({ code, sig });
+        });
+      });
+
+      assert.ok(
+        fullOutput.includes('SIGTERM_COUNT_2'),
+        'Child process must receive second SIGTERM forwarded by CLI',
+      );
+      assert.equal(exitStatus.code, 143);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

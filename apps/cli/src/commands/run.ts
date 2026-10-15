@@ -181,16 +181,27 @@ export async function runApp(context: TsdkContext, rawRunArgs: string[]): Promis
       env: { ...process.env },
     });
 
+    let hasExited = false;
+
     const forwardSignal = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        child.kill(sig);
+      if (!hasExited && child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill(sig);
+        } catch {
+          // child might have already terminated
+        }
       }
     };
 
     process.on('SIGINT', forwardSignal);
     process.on('SIGTERM', forwardSignal);
 
+    child.on('exit', () => {
+      hasExited = true;
+    });
+
     child.on('close', (code, sig) => {
+      hasExited = true;
       process.removeListener('SIGINT', forwardSignal);
       process.removeListener('SIGTERM', forwardSignal);
       if (code !== null) {
@@ -204,6 +215,7 @@ export async function runApp(context: TsdkContext, rawRunArgs: string[]): Promis
     });
 
     child.on('error', (err) => {
+      hasExited = true;
       process.removeListener('SIGINT', forwardSignal);
       process.removeListener('SIGTERM', forwardSignal);
       console.error(`[TSNX Error] Failed to launch application:`, err);

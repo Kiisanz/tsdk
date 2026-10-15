@@ -220,10 +220,27 @@ projects:
     }
   });
 
-  it('M-15: treats signal termination (code=null, signal=SIGTERM) as fatal compilation failure with non-zero exit code', async () => {
-    // Spawn a dummy process that terminates via SIGTERM to test signal mapping logic
-    const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
+  it('M-15 & I-01: tests BuildOrchestrator.executeTsc and signal exit mapping', async () => {
+    // 1. Direct execution of executeTsc with valid arguments
+    const tscVersion = await BuildOrchestrator.executeTsc(['--version'], process.cwd());
+    assert.equal(tscVersion.exitCode, 0);
+    assert.ok(tscVersion.output.toLowerCase().includes('version'));
 
+    // 2. Direct unit testing of production parseProcessExit method
+    const sigtermParsed = BuildOrchestrator.parseProcessExit(null, 'SIGTERM', 'some log', 'error log');
+    assert.equal(sigtermParsed.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
+    assert.ok(sigtermParsed.output.includes('Compilation terminated by signal: SIGTERM'));
+
+    const sigintParsed = BuildOrchestrator.parseProcessExit(null, 'SIGINT', '', '');
+    assert.equal(sigintParsed.exitCode, 130, 'Exit code for SIGINT must be 128 + 2 = 130');
+    assert.ok(sigintParsed.output.includes('Compilation terminated by signal: SIGINT'));
+
+    const normalExit = BuildOrchestrator.parseProcessExit(0, null, 'success', '');
+    assert.equal(normalExit.exitCode, 0);
+    assert.equal(normalExit.output, 'success');
+
+    // 3. Integration test with a real spawned process terminated by SIGTERM
+    const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
     let stdout = '';
     let stderr = '';
     child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -231,21 +248,7 @@ projects:
 
     const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
       child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        let exitCode: number;
-        let output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
-
-        if (code !== null) {
-          exitCode = code;
-        } else if (signal) {
-          const signalNum = (os.constants.signals as Record<string, number>)[signal] ?? 1;
-          exitCode = 128 + signalNum;
-          const signalMsg = `Compilation terminated by signal: ${signal}`;
-          output = output ? `${output}\n${signalMsg}` : signalMsg;
-        } else {
-          exitCode = 1;
-        }
-
-        resolve({ exitCode, output });
+        resolve(BuildOrchestrator.parseProcessExit(code, signal, stdout, stderr));
       });
     });
 

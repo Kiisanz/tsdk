@@ -206,6 +206,29 @@ export class BuildOrchestrator {
     return this.buildWorkspace(workspace, graph, { clean: true });
   }
 
+  static parseProcessExit(
+    code: number | null,
+    signal: NodeJS.Signals | null,
+    stdout: string,
+    stderr: string,
+  ): { exitCode: number; output: string } {
+    let exitCode: number;
+    let output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+
+    if (code !== null) {
+      exitCode = code;
+    } else if (signal) {
+      const signalNum = (os.constants.signals as Record<string, number>)[signal] ?? 1;
+      exitCode = 128 + signalNum;
+      const signalMsg = `Compilation terminated by signal: ${signal}`;
+      output = output ? `${output}\n${signalMsg}` : signalMsg;
+    } else {
+      exitCode = 1;
+    }
+
+    return { exitCode, output };
+  }
+
   static executeTsc(
     args: string[],
     cwd: string,
@@ -229,21 +252,7 @@ export class BuildOrchestrator {
       });
 
       child.on('close', (code, signal) => {
-        let exitCode: number;
-        let output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
-
-        if (code !== null) {
-          exitCode = code;
-        } else if (signal) {
-          const signalNum = (os.constants.signals as Record<string, number>)[signal] ?? 1;
-          exitCode = 128 + signalNum;
-          const signalMsg = `Compilation terminated by signal: ${signal}`;
-          output = output ? `${output}\n${signalMsg}` : signalMsg;
-        } else {
-          exitCode = 1;
-        }
-
-        resolve({ exitCode, output });
+        resolve(this.parseProcessExit(code, signal, stdout, stderr));
       });
 
       child.on('error', (err) => {
