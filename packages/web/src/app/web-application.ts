@@ -406,9 +406,9 @@ export class WebApplication {
     await this.appHost!.start();
   }
 
-  public async stop(): Promise<void> {
+  public async stop(cancellationToken?: AbortSignal): Promise<void> {
     if (this.appHost) {
-      await this.appHost.stop();
+      await this.appHost.stop(cancellationToken);
     }
   }
 

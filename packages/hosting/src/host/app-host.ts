@@ -97,7 +97,7 @@ export class AppHost implements IHost {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(cancellationToken?: AbortSignal): Promise<void> {
     if (this.state === HostState.Stopped) {
       return;
     }
@@ -118,7 +118,7 @@ export class AppHost implements IHost {
     this.state = HostState.Stopping;
     this.stopPromise = (async () => {
       try {
-        await this.coordinator.stop();
+        await this.coordinator.stop(cancellationToken);
       } finally {
         this.state = HostState.Stopped;
       }

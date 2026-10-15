@@ -146,6 +146,14 @@ export class HttpServerHostedService implements HostedService {
             socket.destroy();
           }
 
+          if ((server as any).listening) {
+            try {
+              server.close();
+            } catch {
+              // Ignore if already closing
+            }
+          }
+
           this.server = undefined;
           this.sockets.clear();
           this.activeRequests.clear();
@@ -173,8 +181,29 @@ export class HttpServerHostedService implements HostedService {
           }
         }
 
+        // Force destroy sockets so server can close immediately
+        for (const socket of this.sockets) {
+          socket.destroy();
+        }
+
         finish();
       };
+
+      // 1. Stop accepting new incoming connections immediately
+      try {
+        server.close(() => {
+          serverClosed = true;
+          tryFinish();
+        });
+      } catch {
+        serverClosed = true;
+        tryFinish();
+      }
+
+      // 2. Close idle keep-alive connections immediately
+      if (typeof (server as any).closeIdleConnections === 'function') {
+        (server as any).closeIdleConnections();
+      }
 
       if (signal.aborted) {
         onAbort();
@@ -182,17 +211,6 @@ export class HttpServerHostedService implements HostedService {
       }
 
       signal.addEventListener('abort', onAbort, { once: true });
-
-      // 1. Stop accepting new incoming connections
-      server.close(() => {
-        serverClosed = true;
-        tryFinish();
-      });
-
-      // 2. Close idle keep-alive connections immediately
-      if (typeof (server as any).closeIdleConnections === 'function') {
-        (server as any).closeIdleConnections();
-      }
 
       // 3. Graceful drain: wait for in-flight requests and their scopes to completely settle
       if (this.activeRequests.size > 0) {

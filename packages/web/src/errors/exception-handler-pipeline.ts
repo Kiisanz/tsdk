@@ -72,7 +72,11 @@ export class ExceptionHandlerPipeline {
       let handlerInstance: IExceptionHandler | undefined;
       const startedBefore = ctx.response.hasStarted;
       const statusBefore = ctx.response.statusCode;
-      const headersBefore = { ...ctx.response.raw.getHeaders() };
+      // Deep snapshot of headers (cloning arrays to prevent in-place mutation bypass)
+      const headersBefore: Record<string, string | number | string[] | undefined> = {};
+      for (const [name, val] of Object.entries(ctx.response.raw.getHeaders())) {
+        headersBefore[name] = Array.isArray(val) ? [...val] : val;
+      }
 
       const restoreResponseState = () => {
         if (ctx.response.hasStarted) return;
@@ -83,7 +87,7 @@ export class ExceptionHandlerPipeline {
         // 2. Re-apply the exact snapshot of original headers
         for (const [name, val] of Object.entries(headersBefore)) {
           if (val !== undefined) {
-            ctx.response.setHeader(name, val as any);
+            ctx.response.setHeader(name, Array.isArray(val) ? [...val] : (val as any));
           }
         }
         // 3. Restore status code

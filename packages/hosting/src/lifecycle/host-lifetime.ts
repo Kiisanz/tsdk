@@ -158,7 +158,7 @@ export class HostLifecycleCoordinator {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(cancellationToken?: AbortSignal): Promise<void> {
     // Idempotency: multiple stop calls are safe
     if (this.isStopping || this.isStopped) {
       return;
@@ -169,6 +169,16 @@ export class HostLifecycleCoordinator {
 
     const shutdownCts = new AbortController();
     let timeoutTimer: NodeJS.Timeout | undefined;
+
+    if (cancellationToken?.aborted) {
+      shutdownCts.abort(cancellationToken.reason);
+    } else if (cancellationToken) {
+      cancellationToken.addEventListener(
+        'abort',
+        () => shutdownCts.abort(cancellationToken.reason),
+        { once: true },
+      );
+    }
 
     // Hard limit: Timeout promise enforces absolute deadline even if service ignores signal
     const timeoutPromise = new Promise<'timeout'>((resolve) => {

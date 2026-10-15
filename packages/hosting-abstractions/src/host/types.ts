@@ -7,7 +7,7 @@ export interface IHost {
   readonly currentState?: string;
   start(): Promise<void>;
   run(): Promise<void>;
-  stop(): Promise<void>;
+  stop(cancellationToken?: AbortSignal): Promise<void>;
   dispose(): Promise<void>;
 }
 

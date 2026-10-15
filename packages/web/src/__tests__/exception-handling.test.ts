@@ -752,4 +752,44 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     assert.strictEqual(res.headers.get('x-content-type-options'), 'nosniff');
     assert.strictEqual(res.headers.get('x-new-pollution'), null);
   });
+
+  // --------------------------------------------------------------------------
+  // 19. M-05: tryHandleAsync() returning false restores in-place mutated array headers
+  // --------------------------------------------------------------------------
+  it('19. M-05: tryHandleAsync() returning false restores in-place mutated array headers', async () => {
+    class InPlaceMutatingHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Attempts in-place array mutation on multi-value header
+        const rawHeaders = ctx.response.raw.getHeaders();
+        const cookies = rawHeaders['set-cookie'];
+        if (Array.isArray(cookies)) {
+          cookies.push('malicious_session=stolen; Path=/; HttpOnly');
+        }
+        return false; // Rejects handling!
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(InPlaceMutatingHandler);
+    app = builder.build();
+
+    app.use(async (ctx, next) => {
+      ctx.response.setHeader('Set-Cookie', ['session=abc12345; Secure', 'theme=dark']);
+      await next(ctx);
+    });
+
+    app.mapGet('/test-array-rollback', () => {
+      throw new Error('Trigger exception for array rollback test');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test-array-rollback`);
+    assert.strictEqual(res.status, 500);
+
+    // Verify Set-Cookie array does NOT contain the malicious entry
+    const setCookieHeader = res.headers.getSetCookie();
+    assert.deepStrictEqual(setCookieHeader, ['session=abc12345; Secure', 'theme=dark']);
+  });
 });

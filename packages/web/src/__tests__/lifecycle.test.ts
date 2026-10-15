@@ -562,4 +562,49 @@ describe('HTTP Request Lifecycle & Cancellation - 12 Acceptance Criteria', () =>
     assert.deepStrictEqual(events, ['dispose-start', 'dispose-end']);
     app = undefined;
   });
+
+  // 15. M-06: Shutdown dengan signal yang sudah di-abort tetap menutup server dan membebaskan port
+  test('15. M-06: Shutdown dengan signal yang sudah di-abort tetap menutup server dan membebaskan port', async () => {
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/health', () => Results.text('ok'));
+
+    await app.start();
+    const port = app.listeningPort!;
+    assert.ok(port > 0);
+
+    // Verify server is listening and responding
+    const res = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.strictEqual(res.status, 200);
+
+    // Create an already-aborted signal
+    const abortController = new AbortController();
+    abortController.abort(new DOMException('Pre-aborted shutdown', 'AbortError'));
+
+    // Stop using pre-aborted signal
+    await app.stop(abortController.signal);
+    app = undefined;
+
+    // Verify port is freed: a new server can bind to the exact same port without EADDRINUSE
+    await new Promise<void>((resolve, reject) => {
+      const probeServer = http.createServer();
+      probeServer.once('error', (err) => {
+        probeServer.close();
+        reject(err);
+      });
+      probeServer.listen(port, '127.0.0.1', () => {
+        probeServer.close(() => resolve());
+      });
+    });
+
+    // Also verify fetching the old port fails with connection refused
+    await assert.rejects(
+      async () => {
+        await fetch(`http://127.0.0.1:${port}/health`);
+      },
+      (err: any) => err.name === 'TypeError' || err.code === 'ECONNREFUSED' || err.cause?.code === 'ECONNREFUSED'
+    );
+  });
 });
