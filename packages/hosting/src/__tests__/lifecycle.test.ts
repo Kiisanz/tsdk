@@ -166,4 +166,71 @@ describe('@tsnx/hosting: Lifecycle Coordinator', () => {
     const listeners = getEventListeners(externalCts.signal, 'abort');
     assert.equal(listeners.length, 0, 'External token must not leak abort listeners after shutdown');
   });
+
+  it('M-07: stopping coordinator while startup is in-progress cancels startup and does NOT start subsequent services', async () => {
+    let service1Started = false;
+    let service2Started = false;
+
+    const slowService: HostedService = {
+      async start(signal: AbortSignal) {
+        service1Started = true;
+        // Wait until aborted
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        throw new DOMException('Startup aborted', 'AbortError');
+      },
+      async stop() {},
+    };
+
+    const nextService: HostedService = {
+      async start() {
+        service2Started = true;
+      },
+      async stop() {},
+    };
+
+    const lifetime = new HostApplicationLifetime();
+    const coordinator = new HostLifecycleCoordinator(lifetime, undefined, {
+      registerSignalHandlers: false,
+    });
+
+    const startPromise = coordinator.start([slowService, nextService]);
+    // Give event loop tick for slowService to begin starting
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(service1Started, true);
+    assert.equal(service2Started, false);
+
+    // Trigger stop while startup is in flight
+    await coordinator.stop();
+
+    await assert.rejects(startPromise);
+
+    // Next service must NEVER have been started!
+    assert.equal(service2Started, false, 'Next service must not start after stop requested');
+  });
+
+  it('M-07: stop() with pre-aborted signal completes immediately even if shutdownTimeoutMs is configured', async () => {
+    const dummyService: HostedService = {
+      async start() {},
+      async stop() {},
+    };
+
+    const lifetime = new HostApplicationLifetime();
+    const coordinator = new HostLifecycleCoordinator(lifetime, undefined, {
+      registerSignalHandlers: false,
+      shutdownTimeoutMs: 5000,
+    });
+
+    await coordinator.start([dummyService]);
+
+    const abortedCts = new AbortController();
+    abortedCts.abort();
+
+    const startTime = Date.now();
+    await coordinator.stop(abortedCts.signal);
+    const elapsed = Date.now() - startTime;
+
+    assert.ok(elapsed < 100, `Expected stop to complete immediately, took ${elapsed}ms`);
+  });
 });

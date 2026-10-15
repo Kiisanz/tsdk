@@ -57,6 +57,8 @@ export class HostLifecycleCoordinator {
   private readonly startedServices: HostedService[] = [];
   private isStopping = false;
   private isStopped = false;
+  private startupCts?: AbortController;
+  private activeStartPromise?: Promise<void>;
   private readonly shutdownTimeoutMs: number;
   private signalListeners: Array<{ signal: NodeJS.Signals; listener: () => void }> = [];
 
@@ -106,26 +108,52 @@ export class HostLifecycleCoordinator {
   }
 
   async start(services: readonly HostedService[]): Promise<void> {
-    const startupCts = new AbortController();
-
-    for (let i = 0; i < services.length; i++) {
-      const service = services[i];
-      try {
-        await service.start(startupCts.signal);
-        this.startedServices.push(service);
-      } catch (err: unknown) {
-        this.logger?.error(
-          `Hosted service at index ${i} failed to start. Rolling back previously started services...`,
-          err,
-        );
-
-        // Partial startup failure rollback in reverse order
-        await this.rollbackStartedServices();
-        throw err;
-      }
+    if (this.isStopping || this.isStopped) {
+      throw new DOMException('Cannot start host: host is stopping or stopped', 'AbortError');
     }
 
-    this.lifetime.notifyStarted();
+    this.startupCts = new AbortController();
+    const startupSignal = this.startupCts.signal;
+
+    const startTask = (async () => {
+      for (let i = 0; i < services.length; i++) {
+        const service = services[i];
+
+        if (this.isStopping || this.isStopped || startupSignal.aborted) {
+          await this.rollbackStartedServices();
+          throw new DOMException('Startup aborted: host is stopping', 'AbortError');
+        }
+
+        try {
+          await service.start(startupSignal);
+        } catch (err: unknown) {
+          this.logger?.error(
+            `Hosted service at index ${i} failed to start. Rolling back previously started services...`,
+            err,
+          );
+          await this.rollbackStartedServices();
+          throw err;
+        }
+
+        if (this.isStopping || this.isStopped || startupSignal.aborted) {
+          this.startedServices.push(service);
+          await this.rollbackStartedServices();
+          throw new DOMException('Startup aborted: host is stopping', 'AbortError');
+        }
+
+        this.startedServices.push(service);
+      }
+
+      this.lifetime.notifyStarted();
+    })();
+
+    this.activeStartPromise = startTask;
+    try {
+      await startTask;
+    } finally {
+      this.activeStartPromise = undefined;
+      this.startupCts = undefined;
+    }
   }
 
   private async rollbackStartedServices(): Promise<void> {
@@ -182,8 +210,19 @@ export class HostLifecycleCoordinator {
       );
     }
 
+    // 1. Abort in-flight startup immediately if in progress!
+    if (this.startupCts && !this.startupCts.signal.aborted) {
+      this.startupCts.abort(
+        cancellationToken?.reason ?? new DOMException('Shutdown initiated during startup', 'AbortError'),
+      );
+    }
+
     // Hard limit: Timeout promise enforces absolute deadline even if service ignores signal
     const timeoutPromise = new Promise<'timeout'>((resolve) => {
+      if (shutdownCts.signal.aborted) {
+        return resolve('timeout');
+      }
+      shutdownCts.signal.addEventListener('abort', () => resolve('timeout'), { once: true });
       timeoutTimer = setTimeout(() => {
         this.logger?.warn(
           `Shutdown timed out after ${this.shutdownTimeoutMs}ms. Forcing shutdown cancellation.`,
@@ -194,6 +233,15 @@ export class HostLifecycleCoordinator {
     });
 
     const stopServicesTask = (async () => {
+      // If startup is in flight, wait for it to settle or be cancelled
+      if (this.activeStartPromise) {
+        try {
+          await this.activeStartPromise;
+        } catch {
+          // Expected startup cancellation error
+        }
+      }
+
       const servicesToStop = [...this.startedServices].reverse();
       for (const service of servicesToStop) {
         try {

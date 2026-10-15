@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { AppHost, BackgroundService } from '../index.js';
+import { AppHost, BackgroundService, HostedService } from '../index.js';
 
 describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
   it('distinguishes start() and run() contracts', async () => {
@@ -146,5 +146,63 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
       () => builder.build(),
       (err: any) => err.name === 'ServiceNotFoundError' || /MissingToken/.test(err.message),
     );
+  });
+
+  it('M-08: hosted service instantiated via addHostedService().toClass() is disposed by host.dispose()', async () => {
+    let stopCount = 0;
+    let disposeCount = 0;
+
+    class DisposableWorker implements HostedService {
+      async start() {}
+      async stop() {
+        stopCount++;
+      }
+      dispose() {
+        disposeCount++;
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addHostedService().toClass(DisposableWorker);
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    assert.equal(stopCount, 1);
+    assert.equal(disposeCount, 1, 'Framework-created hosted service must be disposed on host.dispose()');
+  });
+
+  it('M-08: multiple hosted services are disposed in reverse order and support async disposal', async () => {
+    const events: string[] = [];
+
+    class WorkerA implements HostedService {
+      async start() {}
+      async stop() {}
+      async [Symbol.asyncDispose]() {
+        events.push('dispose-a');
+      }
+    }
+
+    class WorkerB implements HostedService {
+      async start() {}
+      async stop() {}
+      dispose() {
+        events.push('dispose-b');
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addHostedService().toClass(WorkerA);
+    builder.services.addHostedService().toClass(WorkerB);
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    // Reverse order of creation: B then A
+    assert.deepEqual(events, ['dispose-b', 'dispose-a']);
   });
 });

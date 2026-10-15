@@ -215,7 +215,11 @@ export class WatchSupervisor {
     }
   }
 
-  private async stopChildProcess(): Promise<void> {
+  public setChildProcessForTesting(child: ChildProcess): void {
+    this.childProcess = child;
+  }
+
+  public async stopChildProcess(killTimeoutMs: number = 2000): Promise<void> {
     if (!this.childProcess) {
       return;
     }
@@ -224,23 +228,54 @@ export class WatchSupervisor {
     this.childProcess = undefined;
 
     return new Promise<void>((resolve) => {
-      if (child.killed || child.exitCode !== null) {
+      let isExited = child.exitCode !== null || child.signalCode !== null;
+      if (isExited) {
         return resolve();
       }
 
-      child.kill('SIGTERM');
+      let timeout: NodeJS.Timeout | undefined;
+      let forceKillTimeout: NodeJS.Timeout | undefined;
 
-      const timeout = setTimeout(() => {
-        if (!child.killed && child.exitCode === null) {
-          child.kill('SIGKILL');
+      const onExit = () => {
+        if (!isExited) {
+          isExited = true;
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+          }
+          if (forceKillTimeout) {
+            clearTimeout(forceKillTimeout);
+            forceKillTimeout = undefined;
+          }
+          resolve();
         }
-        resolve();
-      }, 2000);
+      };
 
-      child.once('close', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+      child.once('exit', onExit);
+      child.once('close', onExit);
+
+      // 1. Try graceful SIGTERM
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // Child might have already exited
+      }
+
+      // 2. Fallback to SIGKILL if child ignores SIGTERM after killTimeoutMs
+      timeout = setTimeout(() => {
+        if (!isExited) {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // Child might have already exited
+          }
+          // Safety fallback: ensure promise resolves even if exit event doesn't fire
+          forceKillTimeout = setTimeout(() => {
+            onExit();
+          }, 500);
+          forceKillTimeout.unref();
+        }
+      }, killTimeoutMs);
     });
   }
 

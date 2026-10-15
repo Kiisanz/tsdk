@@ -3,9 +3,10 @@ import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseRunArgs } from '../commands/run.js';
+import { WatchSupervisor } from '../commands/watch.js';
 
 const CLI_BIN = fileURLToPath(new URL('../index.js', import.meta.url));
 
@@ -217,5 +218,40 @@ describe('tsnx run command options & workspace execution', () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it('M-09: watch stopChildProcess forcefully terminates child process with SIGKILL if it ignores SIGTERM', async () => {
+    // Spawn a node child process that traps SIGTERM and ignores it, notifying on stdout when ready
+    const child = spawn(
+      process.execPath,
+      ['-e', 'process.on("SIGTERM", () => {}); console.log("READY"); setInterval(() => {}, 1000);'],
+      { stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+
+    // Wait until child is running and has registered the SIGTERM handler
+    await new Promise<void>((resolve) => {
+      child.stdout.once('data', () => resolve());
+    });
+
+    const supervisor = new WatchSupervisor({ kind: 'project', project: {} as any, filePath: '' }, {});
+    supervisor.setChildProcessForTesting(child);
+
+    assert.ok(child.pid);
+    const pid = child.pid;
+
+    // Verify process is running
+    assert.doesNotThrow(() => process.kill(pid, 0));
+
+    // Call stopChildProcess with 150ms timeout (should send SIGTERM, wait 150ms, then force-kill with SIGKILL)
+    await supervisor.stopChildProcess(150);
+
+    // Verify process has exited via SIGKILL
+    assert.strictEqual(child.signalCode, 'SIGKILL');
+
+    // Verify process is no longer running in OS
+    assert.throws(
+      () => process.kill(pid, 0),
+      (err: any) => err.code === 'ESRCH',
+    );
   });
 });

@@ -121,19 +121,25 @@ export class HostApplicationBuilder {
 
     // Resolve hosted services from DI container
     const hostedServices: HostedService[] = [];
+    const frameworkCreatedServices = new Set<HostedService>();
     const registeredHostedDescriptors = this.services.findAll(HOSTED_SERVICE_TOKEN);
     for (const desc of registeredHostedDescriptors) {
       if (desc.instance) {
         hostedServices.push(desc.instance);
       } else if (desc.factory) {
-        hostedServices.push(desc.factory(serviceProvider));
+        const inst = desc.factory(serviceProvider);
+        hostedServices.push(inst);
+        frameworkCreatedServices.add(inst);
       } else if (desc.implementationType) {
+        let inst: HostedService;
         if (desc.dependencies && desc.dependencies.length > 0) {
           const args = desc.dependencies.map((token) => serviceProvider.get(token));
-          hostedServices.push(new desc.implementationType(...args));
+          inst = new desc.implementationType(...args);
         } else {
-          hostedServices.push(new desc.implementationType());
+          inst = new desc.implementationType();
         }
+        hostedServices.push(inst);
+        frameworkCreatedServices.add(inst);
       }
     }
 
@@ -158,6 +164,7 @@ export class HostApplicationBuilder {
       hostedServices,
       coordinator,
       startupValidators,
+      frameworkCreatedServices,
     );
   }
 }

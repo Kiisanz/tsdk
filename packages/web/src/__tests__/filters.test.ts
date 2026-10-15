@@ -446,4 +446,88 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
     const resCat = await fetch(`http://127.0.0.1:${port}/categories`);
     assert.strictEqual(resCat.status, 200);
   });
+
+  test('M-10: framework-instantiated class filter is disposed after request (success, exception, short-circuit, and async)', async () => {
+    let createdCount = 0;
+    let disposedCount = 0;
+
+    class DisposableFilter implements IEndpointFilter {
+      constructor() {
+        createdCount++;
+      }
+      async invokeAsync(ctx: EndpointFilterInvocationContext, next: EndpointFilterDelegate) {
+        return await next(ctx);
+      }
+      dispose() {
+        disposedCount++;
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/filter-disposal', () => Results.text('ok'))
+      .addEndpointFilter(DisposableFilter);
+
+    await app.start();
+    const port = app.listeningPort;
+
+    const res1 = await fetch(`http://127.0.0.1:${port}/filter-disposal`);
+    assert.strictEqual(res1.status, 200);
+    assert.strictEqual(createdCount, 1);
+    assert.strictEqual(disposedCount, 1);
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/filter-disposal`);
+    assert.strictEqual(res2.status, 200);
+    assert.strictEqual(createdCount, 2);
+    assert.strictEqual(disposedCount, 2);
+  });
+
+  test('M-10: framework-instantiated factory filter is disposed, while shared caller object filter is not', async () => {
+    let factoryCreated = 0;
+    let factoryDisposed = 0;
+    let sharedDisposed = 0;
+
+    class FactoryFilter implements IEndpointFilter {
+      constructor() {
+        factoryCreated++;
+      }
+      async invokeAsync(ctx: EndpointFilterInvocationContext, next: EndpointFilterDelegate) {
+        return await next(ctx);
+      }
+      dispose() {
+        factoryDisposed++;
+      }
+    }
+
+    const sharedFilter: IEndpointFilter & { dispose: () => void } = {
+      async invokeAsync(ctx, next) {
+        return await next(ctx);
+      },
+      dispose() {
+        sharedDisposed++;
+      },
+    };
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    app = builder.build();
+
+    app.mapGet('/factory-and-shared', () => Results.text('ok'))
+      .addEndpointFilter(() => new FactoryFilter())
+      .addEndpointFilter(sharedFilter);
+
+    await app.start();
+    const port = app.listeningPort;
+
+    for (let i = 0; i < 3; i++) {
+      const res = await fetch(`http://127.0.0.1:${port}/factory-and-shared`);
+      assert.strictEqual(res.status, 200);
+    }
+
+    assert.strictEqual(factoryCreated, 3);
+    assert.strictEqual(factoryDisposed, 3, 'Factory-created filter instances must be disposed per request');
+    assert.strictEqual(sharedDisposed, 0, 'Shared caller object filter must not be disposed by framework');
+  });
 });
