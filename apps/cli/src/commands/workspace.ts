@@ -21,9 +21,11 @@ Options for "workspace remove":
   --delete, -d               Delete the project directory from disk
 
 Options for "workspace init":
-  -n, --name <name>    Workspace name
-  --scope <scope>      Explicit npm package scope (e.g. @aras)
-  --no-scope           Disable automatic package scope derivation
+  -n, --name <name>          Workspace name
+  --scope <scope>            Explicit npm package scope (e.g. @aras)
+  --no-scope                 Disable automatic package scope derivation
+  --depth <n>                Glob depth for workspace packages (defaults to 3: *, */*, */*/*)
+  --packages <patterns>      Comma-separated custom package globs (e.g. "apps/*,packages/*")
 `);
     return 0;
   }
@@ -31,6 +33,8 @@ Options for "workspace init":
   if (subCommand === 'init') {
     let explicitName: string | undefined;
     let explicitScope: string | undefined;
+    let explicitDepth: number | undefined;
+    let explicitPackages: string[] | undefined;
     let noScope = false;
     const positional: string[] = [];
 
@@ -64,6 +68,26 @@ Options for "workspace init":
         noScope = true;
         continue;
       }
+      if (arg === '--depth') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          explicitDepth = parseInt(args[++i], 10);
+        }
+        continue;
+      }
+      if (arg.startsWith('--depth=')) {
+        explicitDepth = parseInt(arg.slice(8), 10);
+        continue;
+      }
+      if (arg === '--packages') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          explicitPackages = args[++i].split(',').map((s) => s.trim());
+        }
+        continue;
+      }
+      if (arg.startsWith('--packages=')) {
+        explicitPackages = arg.slice(11).split(',').map((s) => s.trim());
+        continue;
+      }
       if (!arg.startsWith('-')) {
         positional.push(arg);
       }
@@ -80,6 +104,8 @@ Options for "workspace init":
         name: wsName,
         scope: explicitScope,
         noScope,
+        depth: explicitDepth,
+        packages: explicitPackages,
       });
       console.log(`\n✔ Initialized workspace "${wsName}" at ${createdPath}`);
       return 0;

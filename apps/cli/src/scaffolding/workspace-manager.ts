@@ -8,6 +8,8 @@ export interface InitWorkspaceOptions {
   scope?: string;
   noScope?: boolean;
   targetDir?: string;
+  depth?: number;
+  packages?: string[];
 }
 
 export class WorkspaceManager {
@@ -46,6 +48,15 @@ export class WorkspaceManager {
       scope = derivePackageScope(name);
     }
 
+    // Generate package workspace patterns based on depth or custom patterns
+    let packagePatterns: string[];
+    if (Array.isArray(opts.packages) && opts.packages.length > 0) {
+      packagePatterns = opts.packages;
+    } else {
+      const depth = Math.max(1, opts.depth ?? 3);
+      packagePatterns = Array.from({ length: depth }, (_, i) => Array(i + 1).fill('*').join('/'));
+    }
+
     // 1. Root package.json
     let pkgJson: Record<string, any> = {};
     if (fs.existsSync(pkgJsonPath)) {
@@ -57,7 +68,7 @@ export class WorkspaceManager {
     }
     pkgJson.name = pkgJson.name ?? toKebabCase(name);
     pkgJson.private = true;
-    pkgJson.workspaces = pkgJson.workspaces ?? ['*', '*/*'];
+    pkgJson.workspaces = pkgJson.workspaces ?? [...packagePatterns];
     pkgJson.devDependencies = {
       '@types/node': '^22.13.9',
       typescript: '^5.7.3',
@@ -91,10 +102,7 @@ export class WorkspaceManager {
     // 3. Create pnpm-workspace.yaml if not present
     const pnpmWsPath = path.join(targetDir, 'pnpm-workspace.yaml');
     if (!fs.existsSync(pnpmWsPath)) {
-      const pnpmWsContent = `packages:
-  - '*'
-  - '*/*'
-`;
+      const pnpmWsContent = `packages:\n${packagePatterns.map((p) => `  - '${p}'`).join('\n')}\n`;
       fs.writeFileSync(pnpmWsPath, pnpmWsContent, 'utf-8');
     }
 
@@ -177,6 +185,57 @@ export class WorkspaceManager {
       if (!exists) {
         doc.projects.push({ path: tswEntryPath });
         fs.writeFileSync(tswFile, stringifyYaml(doc), 'utf-8');
+      }
+    }
+
+    // 3. Auto-adapt workspace packages depth in package.json & pnpm-workspace.yaml
+    const segments = relDir.split('/').filter((s) => s && s !== '.');
+    const depth = segments.length;
+    if (depth > 0) {
+      const depthPattern = Array(depth).fill('*').join('/');
+
+      // A. Update package.json workspaces if needed
+      const rootPkgJsonPath = path.join(wsDir, 'package.json');
+      if (fs.existsSync(rootPkgJsonPath)) {
+        try {
+          const pkgJson = JSON.parse(fs.readFileSync(rootPkgJsonPath, 'utf-8'));
+          if (Array.isArray(pkgJson.workspaces)) {
+            const hasPattern = pkgJson.workspaces.some(
+              (p: string) =>
+                p === depthPattern ||
+                p === '**' ||
+                p === relDir ||
+                (p.endsWith('/*') && relDir.startsWith(p.slice(0, -1))),
+            );
+            if (!hasPattern) {
+              pkgJson.workspaces.push(depthPattern);
+              fs.writeFileSync(rootPkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n', 'utf-8');
+            }
+          }
+        } catch {}
+      }
+
+      // B. Update pnpm-workspace.yaml if present
+      const pnpmWsPath = path.join(wsDir, 'pnpm-workspace.yaml');
+      if (fs.existsSync(pnpmWsPath)) {
+        try {
+          const raw = fs.readFileSync(pnpmWsPath, 'utf-8');
+          const doc = (parseYaml(raw) as Record<string, any>) || {};
+          if (!Array.isArray(doc.packages)) {
+            doc.packages = [];
+          }
+          const hasPattern = doc.packages.some(
+            (p: string) =>
+              p === depthPattern ||
+              p === '**' ||
+              p === relDir ||
+              (p.endsWith('/*') && relDir.startsWith(p.slice(0, -1))),
+          );
+          if (!hasPattern) {
+            doc.packages.push(depthPattern);
+            fs.writeFileSync(pnpmWsPath, stringifyYaml(doc), 'utf-8');
+          }
+        } catch {}
       }
     }
 

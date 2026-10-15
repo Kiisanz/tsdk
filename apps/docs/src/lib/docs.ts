@@ -1708,7 +1708,7 @@ export const docs: Doc[] = [
         "language": "bash",
         "filename": "Terminal",
         "paragraphs": [
-          "The initializer writes a private root package.json, a solution-style tsconfig.json, and pnpm-workspace.yaml when needed. Use --scope @your-scope for a custom scope or --no-scope for unscoped package identities."
+          "The initializer writes a private root package.json, a solution-style tsconfig.json, and pnpm-workspace.yaml when needed. Package globs default to depth 3 (*, */*, */*/*) and automatically expand as deeper projects are created. You can also specify custom depth or globs with --depth <n> or --packages <globs>."
         ],
         "code": "mkdir Acme\ncd Acme\ntsnx workspace init Acme"
       },
@@ -1789,7 +1789,7 @@ export const docs: Doc[] = [
             ],
             [
               "tsnx workspace init [name]",
-              "Initialize native solution and package workspace files"
+              "Initialize native solution and package workspace files with flexible depth"
             ],
             [
               "tsnx workspace add <path>",
