@@ -706,4 +706,50 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     assert.strictEqual(createdCount, 2);
     assert.strictEqual(disposedCount, 2);
   });
+
+  // --------------------------------------------------------------------------
+  // 18. M-05: tryHandleAsync() returning false restores modified and deleted original headers
+  // --------------------------------------------------------------------------
+  it('18. M-05: tryHandleAsync() returning false restores modified and deleted original headers', async () => {
+    class WeakeningHandler implements IExceptionHandler {
+      tryHandleAsync(ctx: HttpContext, _error: unknown): boolean {
+        // Attempts to weaken security headers and delete headers
+        ctx.response.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        ctx.response.setHeader('Access-Control-Allow-Origin', '*');
+        ctx.response.removeHeader('X-Content-Type-Options');
+        ctx.response.setHeader('X-New-Pollution', 'polluted');
+        ctx.response.statusCode = 418;
+        return false; // Rejects handling!
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+
+    // Middleware sets strict security policy headers
+    builder.services.addExceptionHandler(WeakeningHandler);
+    app = builder.build();
+
+    app.use(async (ctx, next) => {
+      ctx.response.setHeader('X-Frame-Options', 'DENY');
+      ctx.response.setHeader('Access-Control-Allow-Origin', 'https://trusted.example');
+      ctx.response.setHeader('X-Content-Type-Options', 'nosniff');
+      await next(ctx);
+    });
+
+    app.mapGet('/test-security-rollback', () => {
+      throw new Error('Trigger exception for rollback test');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    const res = await fetch(`http://127.0.0.1:${port}/test-security-rollback`);
+    assert.strictEqual(res.status, 500);
+
+    // Verify original headers were completely restored!
+    assert.strictEqual(res.headers.get('x-frame-options'), 'DENY');
+    assert.strictEqual(res.headers.get('access-control-allow-origin'), 'https://trusted.example');
+    assert.strictEqual(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.strictEqual(res.headers.get('x-new-pollution'), null);
+  });
 });
