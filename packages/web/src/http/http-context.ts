@@ -111,9 +111,11 @@ export class HttpRequest {
     };
 
     signal.addEventListener('abort', onAbort, { once: true });
-    limiter.once('close', () => {
+    const cleanup = () => {
       signal.removeEventListener('abort', onAbort);
-    });
+    };
+    limiter.once('close', cleanup);
+    limiter.once('error', cleanup);
 
     this.bodyStream = this.req.pipe(limiter);
     return this.bodyStream;

@@ -43,15 +43,22 @@ export abstract class BackgroundService implements HostedService {
     // Signal cancellation to execute()
     this.stoppingCts?.abort();
 
-    // Wait for execute() to finish or the shutdown signal to abort
+    if (signal.aborted) {
+      return;
+    }
+
+    let onAbort: (() => void) | undefined;
     const abortPromise = new Promise<void>((resolve) => {
-      if (signal.aborted) {
-        resolve();
-      } else {
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      }
+      onAbort = () => resolve();
+      signal.addEventListener('abort', onAbort, { once: true });
     });
 
-    await Promise.race([this.executingTaskPromise, abortPromise]);
+    try {
+      await Promise.race([this.executingTaskPromise, abortPromise]);
+    } finally {
+      if (onAbort) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    }
   }
 }

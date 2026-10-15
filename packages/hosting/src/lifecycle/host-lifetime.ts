@@ -170,12 +170,14 @@ export class HostLifecycleCoordinator {
     const shutdownCts = new AbortController();
     let timeoutTimer: NodeJS.Timeout | undefined;
 
+    let onExternalCancel: (() => void) | undefined;
     if (cancellationToken?.aborted) {
       shutdownCts.abort(cancellationToken.reason);
     } else if (cancellationToken) {
+      onExternalCancel = () => shutdownCts.abort(cancellationToken.reason);
       cancellationToken.addEventListener(
         'abort',
-        () => shutdownCts.abort(cancellationToken.reason),
+        onExternalCancel,
         { once: true },
       );
     }
@@ -209,6 +211,9 @@ export class HostLifecycleCoordinator {
       }
     } finally {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (cancellationToken && onExternalCancel) {
+        cancellationToken.removeEventListener('abort', onExternalCancel);
+      }
       this.startedServices.length = 0;
       this.isStopped = true;
       this.unregisterSignals();

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getEventListeners } from 'node:events';
 import { describe, it } from 'node:test';
 import { HostedService } from '../hosted-services/index.js';
 import { HostApplicationLifetime, HostLifecycleCoordinator } from '../lifecycle/index.js';
@@ -144,5 +145,25 @@ describe('@tsnx/hosting: Lifecycle Coordinator', () => {
 
     assert.equal(stopStarted, true);
     assert.ok(elapsed >= 40 && elapsed < 500, `Elapsed ${elapsed}ms should be around 50ms and not hang`);
+  });
+
+  it('L-01: cleans up event listener on external cancellation token after shutdown completes', async () => {
+    const dummyService: HostedService = {
+      async start() {},
+      async stop() {},
+    };
+
+    const lifetime = new HostApplicationLifetime();
+    const coordinator = new HostLifecycleCoordinator(lifetime, undefined, {
+      registerSignalHandlers: false,
+    });
+
+    await coordinator.start([dummyService]);
+
+    const externalCts = new AbortController();
+    await coordinator.stop(externalCts.signal);
+
+    const listeners = getEventListeners(externalCts.signal, 'abort');
+    assert.equal(listeners.length, 0, 'External token must not leak abort listeners after shutdown');
   });
 });
