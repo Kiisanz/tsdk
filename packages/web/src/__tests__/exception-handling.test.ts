@@ -792,4 +792,45 @@ describe('Milestone 03: Exception Handling & Problem Details Pipeline', () => {
     const setCookieHeader = res.headers.getSetCookie();
     assert.deepStrictEqual(setCookieHeader, ['session=abc12345; Secure', 'theme=dark']);
   });
+
+  it('M-21: releases write reservation on serialization or onStarting failure so exception handler can recover', async () => {
+    class CustomRecoveryHandler implements IExceptionHandler {
+      async tryHandleAsync(ctx: HttpContext, _error: unknown): Promise<boolean> {
+        await ctx.response.writeJson({ recovery: 'CUSTOM_RECOVERY' }, 599);
+        return true;
+      }
+    }
+
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    builder.services.addExceptionHandler(CustomRecoveryHandler);
+    app = builder.build();
+
+    // 1. Serialization error before commit (BigInt serialization in JSON)
+    app.mapGet('/bad-json-write', () => {
+      return Results.json({ value: 1n });
+    });
+
+    // 2. onStarting callback failure
+    app.mapGet('/bad-starting-write', (ctx) => {
+      ctx.response.onStarting(() => {
+        throw new Error('ON_STARTING_FAILED');
+      });
+      return Results.text('hello');
+    });
+
+    await app.start();
+    const port = app.listeningPort!;
+
+    // Case 1: BigInt json error -> Custom handler recovers with 599
+    const resJson = await fetch(`http://127.0.0.1:${port}/bad-json-write`);
+    assert.strictEqual(resJson.status, 599);
+    const bodyJson = await resJson.json() as any;
+    assert.strictEqual(bodyJson.recovery, 'CUSTOM_RECOVERY');
+
+    // Case 2: onStarting failure -> Custom handler recovers with 599
+    const resStarting = await fetch(`http://127.0.0.1:${port}/bad-starting-write`);
+    assert.strictEqual(resStarting.status, 599);
+    const bodyStarting = await resStarting.json() as any;
+    assert.strictEqual(bodyStarting.recovery, 'CUSTOM_RECOVERY');
+  });
 });

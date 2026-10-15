@@ -559,5 +559,140 @@ describe('HTTP Request Binding - WebApplication Integration & RFC 9457 Problem D
     await app.stop();
     app = undefined;
   });
+
+  it('M-22: supports recursive schema modifier validation for nested arrays and nullables', () => {
+    // 1. Nested array: array(array(Number))
+    const NestedArraySchema = {
+      matrix: array(array(Number)),
+    };
+
+    // Valid: 2D array
+    const validMatrix = bindBody(NestedArraySchema, { matrix: [[1, 2], [3, 4]] });
+    assert.deepEqual(validMatrix.matrix, [[1, 2], [3, 4]]);
+
+    // Invalid: 1D array should be rejected
+    assert.throws(
+      () => bindBody(NestedArraySchema, { matrix: [1, 2] }),
+      (err: any) => {
+        assert(err instanceof RequestBindingException);
+        assert.equal(err.entries[0].path, 'matrix[0]');
+        return true;
+      },
+    );
+
+    // 2. Array of nullable numbers: array(nullable(Number))
+    const ArrayNullableSchema = {
+      scores: array(nullable(Number)),
+    };
+
+    // Valid: elements can be number or null
+    const validScores = bindBody(ArrayNullableSchema, { scores: [100, null, 85] });
+    assert.deepEqual(validScores.scores, [100, null, 85]);
+
+    // Invalid: entire array cannot be null (since array itself is not nullable)
+    assert.throws(
+      () => bindBody(ArrayNullableSchema, { scores: null }),
+      (err: any) => {
+        assert(err instanceof RequestBindingException);
+        assert.equal(err.entries[0].path, 'scores');
+        assert.equal(err.entries[0].message, "Field 'scores' cannot be null");
+        return true;
+      },
+    );
+
+    // 3. Nullable array of numbers: nullable(array(Number))
+    const NullableArraySchema = {
+      items: nullable(array(Number)),
+    };
+
+    // Valid: null array
+    const validNull = bindBody(NullableArraySchema, { items: null });
+    assert.equal(validNull.items, null);
+
+    // Invalid: elements cannot be null
+    assert.throws(
+      () => bindBody(NullableArraySchema, { items: [1, null] }),
+      (err: any) => {
+        assert(err instanceof RequestBindingException);
+        assert.equal(err.entries[0].path, 'items[1]');
+        assert.equal(err.entries[0].message, "Field 'items[1]' cannot be null");
+        return true;
+      },
+    );
+  });
+
+  it('M-23: JSON body binding rejects non-JSON media types with 415 Unsupported Media Type', async () => {
+    const builder = WebApplication.createBuilder(['--Server:Port=0', '--Server:Host=127.0.0.1']);
+    let handlerInvoked = false;
+
+    const InputSchema = {
+      x: Number,
+    };
+
+    const testApp = builder.build();
+    testApp.mapPost('/test-json-type', async (ctx) => {
+      const body = await ctx.request.bindBody(InputSchema);
+      handlerInvoked = true;
+      return Results.ok(body);
+    });
+
+    await testApp.start();
+    const port = testApp.listeningPort!;
+
+    try {
+      // 1. text/plain -> 415
+      handlerInvoked = false;
+      const resText = await fetch(`http://127.0.0.1:${port}/test-json-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: '{"x": 1}',
+      });
+      assert.equal(resText.status, 415);
+      assert.equal(handlerInvoked, false);
+
+      // 2. application/x-www-form-urlencoded -> 415
+      handlerInvoked = false;
+      const resForm = await fetch(`http://127.0.0.1:${port}/test-json-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '{"x": 1}',
+      });
+      assert.equal(resForm.status, 415);
+      assert.equal(handlerInvoked, false);
+
+      // 3. Missing Content-Type -> 415
+      handlerInvoked = false;
+      const resNoCt = await fetch(`http://127.0.0.1:${port}/test-json-type`, {
+        method: 'POST',
+        body: '{"x": 1}',
+      });
+      assert.equal(resNoCt.status, 415);
+      assert.equal(handlerInvoked, false);
+
+      // 4. application/json -> 200
+      handlerInvoked = false;
+      const resJson = await fetch(`http://127.0.0.1:${port}/test-json-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{"x": 42}',
+      });
+      assert.equal(resJson.status, 200);
+      assert.equal(handlerInvoked, true);
+      const jsonBody = await resJson.json() as any;
+      assert.equal(jsonBody.x, 42);
+
+      // 5. application/problem+json -> 200
+      handlerInvoked = false;
+      const resProblemJson = await fetch(`http://127.0.0.1:${port}/test-json-type`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/problem+json; charset=utf-8' },
+        body: '{"x": 99}',
+      });
+      assert.equal(resProblemJson.status, 200);
+      assert.equal(handlerInvoked, true);
+    } finally {
+      await testApp.stop();
+    }
+  });
 });
 

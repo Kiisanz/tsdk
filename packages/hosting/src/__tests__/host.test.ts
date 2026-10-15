@@ -317,4 +317,124 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
     assert.equal(process.listenerCount('SIGINT'), initialSigint, 'No SIGINT listeners must leak after 12 failed cycles');
     assert.equal(process.listenerCount('SIGTERM'), initialSigterm, 'No SIGTERM listeners must leak after 12 failed cycles');
   });
+
+  it('M-18: in-flight shutdown is awaited before disposal proceeds', async () => {
+    const builder = AppHost.createBuilder();
+    const events: string[] = [];
+
+    builder.addHostedService(() => ({
+      async start() {},
+      async stop() {
+        events.push('stop-begins');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        events.push('stop-ends');
+      },
+    }));
+
+    const app = builder.build();
+    await app.start();
+
+    // stopApplication initiates background shutdown
+    app.lifetime!.stopApplication();
+
+    // concurrently call dispose
+    await app.dispose();
+
+    events.push('disposed');
+
+    assert.deepEqual(events, ['stop-begins', 'stop-ends', 'disposed']);
+    assert.equal(app.lifetime!.applicationStopped.aborted, true);
+  });
+
+  it('M-19: cancellation of background service via stoppingToken during normal shutdown does not reject app.run()', async () => {
+    const builder = AppHost.createBuilder();
+
+    class CleanWorker extends BackgroundService {
+      async execute(stoppingToken: AbortSignal): Promise<void> {
+        await new Promise<void>((_resolve, reject) => {
+          stoppingToken.addEventListener('abort', () => {
+            const err = new DOMException('The operation was aborted', 'AbortError');
+            reject(err);
+          });
+        });
+      }
+    }
+
+    builder.addHostedService(() => new CleanWorker());
+    const app = builder.build();
+
+    const runPromise = app.run();
+
+    // Give worker time to start
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Stop application normally
+    await app.stop();
+
+    // app.run() must resolve cleanly without rejecting on AbortError
+    await runPromise;
+    assert.equal(app.currentState, 'stopped');
+  });
+
+  it('L-02: background worker failure with falsy values (0, empty string, null) rejects run()', async () => {
+    for (const falsyVal of [0, '', null]) {
+      const builder = AppHost.createBuilder();
+
+      class FalsyWorker extends BackgroundService {
+        async execute(): Promise<void> {
+          await new Promise((r) => setTimeout(r, 10));
+          throw falsyVal;
+        }
+      }
+
+      builder.addHostedService(() => new FalsyWorker());
+      const app = builder.build();
+
+      try {
+        await app.run();
+        assert.fail(`Expected run() to reject for falsy value: ${String(falsyVal)}`);
+      } catch (err) {
+        assert.equal(err, falsyVal);
+      }
+    }
+  });
+
+  it('M-20: factory failure during build() triggers rollback disposal of earlier instances', () => {
+    const builder = AppHost.createBuilder();
+    let service1Disposed = false;
+    let singletonDisposed = false;
+
+    const MySingleton = Symbol('MySingleton');
+    builder.services.addSingleton(MySingleton as any, () => ({
+      name: 'singleton',
+      dispose() {
+        singletonDisposed = true;
+      },
+    }));
+
+    // Service 1 resolves singleton and is disposable
+    builder.addHostedService((sp) => {
+      sp.get(MySingleton as any);
+      return {
+        async start() {},
+        async stop() {},
+        dispose() {
+          service1Disposed = true;
+        },
+      };
+    });
+
+    // Service 2 throws during construction
+    builder.addHostedService(() => {
+      throw new Error('BUILD_FACTORY_SENTINEL');
+    });
+
+    assert.throws(
+      () => builder.build(),
+      (err: any) => err.message === 'BUILD_FACTORY_SENTINEL',
+    );
+
+    assert.equal(service1Disposed, true, 'Earlier hosted service must be disposed on build failure');
+    assert.equal(singletonDisposed, true, 'Earlier resolved singletons in container must be disposed on build failure');
+  });
 });

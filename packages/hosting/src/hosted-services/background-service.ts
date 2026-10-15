@@ -26,6 +26,16 @@ export abstract class BackgroundService implements HostedService {
     // Trigger execute in background without blocking start()
     this.executingTaskPromise = this.execute(this.stoppingCts.signal)
       .catch((err: unknown) => {
+        // Exclude expected cancellations when the stopping token has been aborted (e.g. during normal host shutdown)
+        const isCancellation =
+          Boolean(this.stoppingCts?.signal.aborted) &&
+          (err === this.stoppingCts?.signal.reason ||
+            (typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'));
+
+        if (isCancellation) {
+          return;
+        }
+
         this.executionErrorValue = err;
         if (this.errorCallback) {
           this.errorCallback(err);

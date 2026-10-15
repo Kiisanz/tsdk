@@ -153,7 +153,26 @@ export class HttpRequest {
     }
   }
 
+  private isJsonContentType(contentType?: string | string[]): boolean {
+    if (!contentType) return false;
+    const raw = Array.isArray(contentType) ? contentType[0] : contentType;
+    if (!raw) return false;
+    const mediaType = raw.split(';')[0].trim().toLowerCase();
+    return (
+      mediaType === 'application/json' ||
+      (mediaType.startsWith('application/') && mediaType.endsWith('+json'))
+    );
+  }
+
   public async bindBody<T extends BindingSchema>(schema: T): Promise<Infer<T>> {
+    const contentType = this.headers['content-type'];
+    if (!this.isJsonContentType(contentType)) {
+      throw new BadHttpRequestException(
+        `Unsupported media type: expected 'application/json' or 'application/*+json', but received '${contentType ?? ''}'.`,
+        415,
+      );
+    }
+
     let rawJson: unknown;
     try {
       rawJson = await this.readJson<unknown>();
@@ -255,12 +274,19 @@ export class HttpResponse {
       return;
     }
     this.startingPromise = (async () => {
-      for (const cb of this.startingCallbacks) {
+      while (this.startingCallbacks.length > 0) {
+        const cb = this.startingCallbacks.shift()!;
         await cb();
       }
       this.startingFired = true;
     })();
-    await this.startingPromise;
+
+    try {
+      await this.startingPromise;
+    } catch (err) {
+      this.startingPromise = undefined;
+      throw err;
+    }
   }
 
   public async fireCompleted(): Promise<void> {
@@ -333,38 +359,45 @@ export class HttpResponse {
   public async writeJson(data: any, statusCode = 200): Promise<void> {
     if (!this.prepareWrite()) return;
 
-    await this.fireStarting();
-    if (this.signal.aborted || this.res.writableEnded) return;
+    try {
+      await this.fireStarting();
+      if (this.signal.aborted || this.res.writableEnded) return;
 
-    this.statusCode = statusCode;
+      this.statusCode = statusCode;
 
-    // RFC compliance: 204 No Content MUST NOT send body or Content-Length
-    if (this.statusCode === 204) {
-      this.removeHeader('Content-Type');
-      this.removeHeader('Content-Length');
-      this.res.end();
-      return;
+      // RFC compliance: 204 No Content MUST NOT send body or Content-Length
+      if (this.statusCode === 204) {
+        this.removeHeader('Content-Type');
+        this.removeHeader('Content-Length');
+        this.res.end();
+        return;
+      }
+
+      // 304 Not Modified sends no body
+      if (this.statusCode === 304) {
+        this.res.end();
+        return;
+      }
+
+      if (!this.getHeader('Content-Type')) {
+        this.setHeader('Content-Type', 'application/json; charset=utf-8');
+      }
+      const json = JSON.stringify(data);
+      this.setHeader('Content-Length', Buffer.byteLength(json));
+
+      // RFC compliance: HEAD request sends headers + Content-Length, but NO body
+      if (this.reqMethod === 'HEAD') {
+        this.res.end();
+        return;
+      }
+
+      this.res.end(json);
+    } catch (err) {
+      if (!this.res.headersSent && !this.res.writableEnded) {
+        this.isWriting = false;
+      }
+      throw err;
     }
-
-    // 304 Not Modified sends no body
-    if (this.statusCode === 304) {
-      this.res.end();
-      return;
-    }
-
-    if (!this.getHeader('Content-Type')) {
-      this.setHeader('Content-Type', 'application/json; charset=utf-8');
-    }
-    const json = JSON.stringify(data);
-    this.setHeader('Content-Length', Buffer.byteLength(json));
-
-    // RFC compliance: HEAD request sends headers + Content-Length, but NO body
-    if (this.reqMethod === 'HEAD') {
-      this.res.end();
-      return;
-    }
-
-    this.res.end(json);
   }
 
   public async writeProblem(input: ProblemDetailsInput): Promise<void> {
@@ -379,93 +412,114 @@ export class HttpResponse {
   public async writeText(text: string, statusCode = 200, contentType = 'text/plain; charset=utf-8'): Promise<void> {
     if (!this.prepareWrite()) return;
 
-    await this.fireStarting();
-    if (this.signal.aborted || this.res.writableEnded) return;
+    try {
+      await this.fireStarting();
+      if (this.signal.aborted || this.res.writableEnded) return;
 
-    this.statusCode = statusCode;
+      this.statusCode = statusCode;
 
-    // RFC compliance: 204 No Content
-    if (this.statusCode === 204) {
-      this.removeHeader('Content-Type');
-      this.removeHeader('Content-Length');
-      this.res.end();
-      return;
+      // RFC compliance: 204 No Content
+      if (this.statusCode === 204) {
+        this.removeHeader('Content-Type');
+        this.removeHeader('Content-Length');
+        this.res.end();
+        return;
+      }
+
+      // 304 Not Modified
+      if (this.statusCode === 304) {
+        this.res.end();
+        return;
+      }
+
+      this.setHeader('Content-Type', contentType);
+      this.setHeader('Content-Length', Buffer.byteLength(text));
+
+      // RFC compliance: HEAD request
+      if (this.reqMethod === 'HEAD') {
+        this.res.end();
+        return;
+      }
+
+      this.res.end(text);
+    } catch (err) {
+      if (!this.res.headersSent && !this.res.writableEnded) {
+        this.isWriting = false;
+      }
+      throw err;
     }
-
-    // 304 Not Modified
-    if (this.statusCode === 304) {
-      this.res.end();
-      return;
-    }
-
-    this.setHeader('Content-Type', contentType);
-    this.setHeader('Content-Length', Buffer.byteLength(text));
-
-    // RFC compliance: HEAD request
-    if (this.reqMethod === 'HEAD') {
-      this.res.end();
-      return;
-    }
-
-    this.res.end(text);
   }
 
   public async writeStream(stream: Readable, statusCode = 200, contentType = 'application/octet-stream'): Promise<void> {
     if (!this.prepareWrite()) return;
 
-    await this.fireStarting();
-    if (this.signal.aborted || this.res.writableEnded) return;
-
-    this.statusCode = statusCode;
-
-    // RFC compliance: 204 / 304
-    if (this.statusCode === 204 || this.statusCode === 304) {
-      if (this.statusCode === 204) {
-        this.removeHeader('Content-Type');
-        this.removeHeader('Content-Length');
-      }
-      stream.destroy();
-      this.res.end();
-      return;
-    }
-
-    this.setHeader('Content-Type', contentType);
-
-    // RFC compliance: HEAD request sends headers without streaming body
-    if (this.reqMethod === 'HEAD') {
-      stream.destroy();
-      this.res.end();
-      return;
-    }
-
-    // Stream with backpressure and client abort handling.
-    // Awaits until stream finishes completely before releasing execution flow.
     try {
-      await pipeline(stream, this.res, { signal: this.signal });
-    } catch (err: any) {
-      stream.destroy();
-      if (!this.res.writableEnded) {
-        this.res.destroy(err);
+      await this.fireStarting();
+      if (this.signal.aborted || this.res.writableEnded) return;
+
+      this.statusCode = statusCode;
+
+      // RFC compliance: 204 / 304
+      if (this.statusCode === 204 || this.statusCode === 304) {
+        if (this.statusCode === 204) {
+          this.removeHeader('Content-Type');
+          this.removeHeader('Content-Length');
+        }
+        stream.destroy();
+        this.res.end();
+        return;
       }
+
+      this.setHeader('Content-Type', contentType);
+
+      // RFC compliance: HEAD request sends headers without streaming body
+      if (this.reqMethod === 'HEAD') {
+        stream.destroy();
+        this.res.end();
+        return;
+      }
+
+      // Stream with backpressure and client abort handling.
+      // Awaits until stream finishes completely before releasing execution flow.
+      try {
+        await pipeline(stream, this.res, { signal: this.signal });
+      } catch (err: any) {
+        stream.destroy();
+        if (!this.res.writableEnded) {
+          this.res.destroy(err);
+        }
+      }
+    } catch (err) {
+      if (!this.res.headersSent && !this.res.writableEnded) {
+        this.isWriting = false;
+      }
+      throw err;
     }
   }
 
   public async end(statusCode?: number): Promise<void> {
     if (!this.prepareWrite()) return;
 
-    await this.fireStarting();
-    if (this.signal.aborted || this.res.writableEnded) return;
+    try {
+      await this.fireStarting();
+      if (this.signal.aborted || this.res.writableEnded) return;
 
-    if (statusCode !== undefined) {
-      this.statusCode = statusCode;
+      if (statusCode !== undefined) {
+        this.statusCode = statusCode;
+      }
+
+      if (this.statusCode === 204) {
+        this.removeHeader('Content-Type');
+        this.removeHeader('Content-Length');
+      }
+
+      this.res.end();
+    } catch (err) {
+      if (!this.res.headersSent && !this.res.writableEnded) {
+        this.isWriting = false;
+      }
+      throw err;
     }
-
-    if (this.statusCode === 204) {
-      this.removeHeader('Content-Type');
-      this.removeHeader('Content-Length');
-    }
-
-    this.res.end();
   }
 }
 

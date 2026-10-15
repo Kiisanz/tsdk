@@ -420,4 +420,44 @@ setInterval(() => {}, 1000);
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('M-24: watchDirectorySubtree fallback detects file changes in deeply nested directories', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-watch-subtree-'));
+
+    try {
+      const deepDir = path.join(tmpDir, 'src', 'features', 'users', 'services');
+      fs.mkdirSync(deepDir, { recursive: true });
+
+      const supervisor = new WatchSupervisor({ kind: 'project', project: {} as any, filePath: '' }, {});
+
+      let changeDetected = false;
+      supervisor.watchDirectorySubtreeForTesting(path.join(tmpDir, 'src'), () => {
+        changeDetected = true;
+      });
+
+      // Write a file in the deeply nested directory
+      const testFile = path.join(deepDir, 'user.service.ts');
+      fs.writeFileSync(testFile, 'export class UserService {}', 'utf-8');
+
+      // Wait for watcher notification
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const interval = setInterval(() => {
+          attempts++;
+          if (changeDetected) {
+            clearInterval(interval);
+            resolve();
+          } else if (attempts > 40) { // 2s timeout
+            clearInterval(interval);
+            reject(new Error('Watch event not detected in nested directory'));
+          }
+        }, 50);
+      });
+
+      assert.strictEqual(changeDetected, true, 'Subtree watcher must detect change in nested directory');
+      supervisor.closeWatchersForTesting();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
