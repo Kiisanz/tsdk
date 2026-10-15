@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Security & Dependency Dashboard",
+  "dependencyDashboardLabels": ["security", "dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "vulnerability"],
+    "schedule": ["at any time"],
+    "prPriority": 100
+  },
+  "packageRules": [
+    {
+      "description": "Trigger immediate PRs with highest priority for CVE and security alerts",
+      "matchPackagePatterns": ["*"],
+      "matchCurrentVersion": "*",
+      "vulnerabilityAlerts": {
+        "enabled": true
+      }
+    },
+    {
+      "description": "Group devDependencies type definitions",
+      "matchPackagePatterns": ["@types/*"],
+      "groupName": "type definitions"
+    },
+    {
+      "description": "Group minor and patch dependency updates",
+      "matchPackagePatterns": ["*"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    }
+  ],
+  "rangeStrategy": "bump",
+  "pnpm": {
+    "enabled": true
+  }
+}

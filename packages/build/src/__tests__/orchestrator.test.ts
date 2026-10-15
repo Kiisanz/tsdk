@@ -239,21 +239,23 @@ projects:
     assert.equal(normalExit.exitCode, 0);
     assert.equal(normalExit.output, 'success');
 
-    // 3. Integration test with a real spawned process terminated by SIGTERM
-    const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+    // 3. Integration test with a real spawned process terminated by SIGTERM (POSIX only)
+    if (process.platform !== 'win32') {
+      const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
-    const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
-      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        resolve(BuildOrchestrator.parseProcessExit(code, signal, stdout, stderr));
+      const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
+        child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+          resolve(BuildOrchestrator.parseProcessExit(code, signal, stdout, stderr));
+        });
       });
-    });
 
-    assert.equal(result.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
-    assert.ok(result.output.includes('Compilation terminated by signal: SIGTERM'));
+      assert.equal(result.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
+      assert.ok(result.output.includes('Compilation terminated by signal: SIGTERM'));
+    }
   });
 });
 
