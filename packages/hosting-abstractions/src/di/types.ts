@@ -47,6 +47,7 @@ export interface IServiceProvider {
   get<T = any>(token: ServiceIdentifier<T>): T;
   getOptional<T>(token: InjectionToken<T>): T | undefined;
   getOptional<T = any>(token: ServiceIdentifier<T>): T | undefined;
+  isOwned?(instance: unknown): boolean;
 }
 
 export interface IServiceProviderScope extends IServiceProvider {

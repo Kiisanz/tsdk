@@ -530,4 +530,75 @@ describe('Endpoint Filters and Declarative Descriptors', () => {
     assert.strictEqual(factoryDisposed, 3, 'Factory-created filter instances must be disposed per request');
     assert.strictEqual(sharedDisposed, 0, 'Shared caller object filter must not be disposed by framework');
   });
+
+  test('M-12: singleton filter resolved via factory (sp => sp.get(Filter)) is not disposed prematurely after request', async () => {
+    let filterDisposed = 0;
+    let invocations = 0;
+
+    class SingletonFilter implements IEndpointFilter {
+      async invokeAsync(ctx: EndpointFilterInvocationContext, next: EndpointFilterDelegate) {
+        invocations++;
+        return await next(ctx);
+      }
+      dispose() {
+        filterDisposed++;
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    builder.services.addSingleton(SingletonFilter).toClass(SingletonFilter);
+    app = builder.build();
+
+    app.mapGet('/singleton-filter-test', () => Results.text('ok'))
+      .addEndpointFilter((sp: any) => sp.get(SingletonFilter));
+
+    await app.start();
+    const port = app.listeningPort;
+
+    // Send multiple requests: the singleton filter must survive and NOT be disposed in finally block
+    for (let i = 0; i < 3; i++) {
+      const res = await fetch(`http://127.0.0.1:${port}/singleton-filter-test`);
+      assert.strictEqual(res.status, 200);
+    }
+
+    assert.strictEqual(invocations, 3);
+    assert.strictEqual(filterDisposed, 0, 'Singleton filter in DI must NOT be disposed after request execution');
+
+    // Dispose host: the container must dispose the singleton filter
+    await app.dispose();
+    assert.strictEqual(filterDisposed, 1, 'Singleton filter must be disposed once when DI container is disposed');
+  });
+
+  test('M-12: scoped filter resolved via factory (sp => sp.get(Filter)) is disposed once by scope, not double-disposed', async () => {
+    let filterDisposed = 0;
+
+    class ScopedFilter implements IEndpointFilter {
+      async invokeAsync(ctx: EndpointFilterInvocationContext, next: EndpointFilterDelegate) {
+        return await next(ctx);
+      }
+      dispose() {
+        filterDisposed++;
+      }
+    }
+
+    const builder = WebApplication.createBuilder();
+    builder.configureServer({ port: 0, host: '127.0.0.1' });
+    builder.services.addScoped(ScopedFilter).toClass(ScopedFilter);
+    app = builder.build();
+
+    app.mapGet('/scoped-filter-test', () => Results.text('ok'))
+      .addEndpointFilter((sp: any) => sp.get(ScopedFilter));
+
+    await app.start();
+    const port = app.listeningPort;
+
+    const res = await fetch(`http://127.0.0.1:${port}/scoped-filter-test`);
+    assert.strictEqual(res.status, 200);
+
+    // Wait brief tick for requestScope disposal to complete
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(filterDisposed, 1, 'Scoped filter in DI must be disposed exactly once by request scope, not twice');
+  });
 });

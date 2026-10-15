@@ -23,6 +23,10 @@ class ServiceResolverView implements IServiceProvider {
   getOptional<T = any>(token: ServiceIdentifier<T>): T | undefined {
     return this.provider.getOptional(token);
   }
+
+  isOwned(instance: unknown): boolean {
+    return this.provider.isOwned(instance);
+  }
 }
 
 export class ServiceProvider implements IServiceProviderRoot, IServiceProviderScope {
@@ -237,6 +241,29 @@ export class ServiceProvider implements IServiceProviderRoot, IServiceProviderSc
         checkCycle(token, [token]);
       }
     }
+  }
+
+  isOwned(instance: unknown): boolean {
+    if (!instance || typeof instance !== 'object') {
+      return false;
+    }
+    if (this.ownedInstances.includes(instance)) {
+      return true;
+    }
+    for (const inst of this.singletonInstances.values()) {
+      if (inst === instance) {
+        return true;
+      }
+    }
+    for (const d of this.descriptors.values()) {
+      if (d.instance === instance) {
+        return true;
+      }
+    }
+    if (this.rootProvider && this.rootProvider !== this) {
+      return this.rootProvider.isOwned(instance);
+    }
+    return false;
   }
 
   createScope(): IServiceProviderScope {

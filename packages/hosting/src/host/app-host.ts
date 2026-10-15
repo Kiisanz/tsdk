@@ -70,9 +70,11 @@ export class AppHost implements IHost {
         await this.coordinator.start(this.hostedServices);
         this.state = HostState.Started;
       } catch (err: unknown) {
-        const wasStopping = this.state === HostState.Stopping || this.state === HostState.Stopped;
+        const wasShutdownRequested =
+          this.state === HostState.Stopping ||
+          this.coordinator.lifetime.applicationStopping.aborted;
         this.state = HostState.Stopped;
-        if (wasStopping && (err as any)?.name === 'AbortError') {
+        if (wasShutdownRequested && (err as any)?.name === 'AbortError') {
           return;
         }
         throw err;
@@ -86,9 +88,10 @@ export class AppHost implements IHost {
     try {
       await this.start();
     } catch (startErr: any) {
-      if (this.state === HostState.Stopping || this.state === HostState.Stopped) {
+      try {
         await this.dispose();
-        return;
+      } catch {
+        // Suppress secondary dispose errors so the original startup error is preserved
       }
       throw startErr;
     }
@@ -147,8 +150,11 @@ export class AppHost implements IHost {
     }
 
     // 2. Dispose framework-created hosted services in reverse order of creation
+    // (Only dispose services that are NOT owned/managed by the DI container)
     const servicesToDispose = this.hostedServices.filter(
-      (s) => !this.frameworkCreatedHostedServices || this.frameworkCreatedHostedServices.has(s),
+      (s) =>
+        (!this.frameworkCreatedHostedServices || this.frameworkCreatedHostedServices.has(s)) &&
+        !(this.services as any).isOwned?.(s),
     );
 
     for (const service of [...servicesToDispose].reverse()) {

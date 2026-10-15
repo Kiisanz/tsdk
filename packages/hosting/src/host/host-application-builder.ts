@@ -129,7 +129,9 @@ export class HostApplicationBuilder {
       } else if (desc.factory) {
         const inst = desc.factory(serviceProvider);
         hostedServices.push(inst);
-        frameworkCreatedServices.add(inst);
+        if (!serviceProvider.isOwned || !serviceProvider.isOwned(inst)) {
+          frameworkCreatedServices.add(inst);
+        }
       } else if (desc.implementationType) {
         let inst: HostedService;
         if (desc.dependencies && desc.dependencies.length > 0) {
@@ -139,7 +141,9 @@ export class HostApplicationBuilder {
           inst = new desc.implementationType();
         }
         hostedServices.push(inst);
-        frameworkCreatedServices.add(inst);
+        if (!serviceProvider.isOwned || !serviceProvider.isOwned(inst)) {
+          frameworkCreatedServices.add(inst);
+        }
       }
     }
 

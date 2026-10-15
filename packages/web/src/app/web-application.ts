@@ -417,6 +417,16 @@ export class WebApplication {
     await this.appHost!.run();
   }
 
+  public async dispose(): Promise<void> {
+    if (this.appHost) {
+      await this.appHost.dispose();
+    }
+  }
+
+  public async [Symbol.asyncDispose](): Promise<void> {
+    await this.dispose();
+  }
+
   public static createBuilder(args: string[] = []): WebApplicationBuilder {
     return new WebApplicationBuilder(args);
   }

@@ -205,4 +205,72 @@ describe('@tsnx/hosting: AppHost & HostApplicationBuilder', () => {
     // Reverse order of creation: B then A
     assert.deepEqual(events, ['dispose-b', 'dispose-a']);
   });
+
+  it('M-11: app.run() rejects when hosted service startup throws an error', async () => {
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+
+    builder.addHostedService(() => ({
+      async start() {
+        throw new Error('STARTUP_SENTINEL');
+      },
+      async stop() {},
+    }));
+
+    const app = builder.build();
+
+    await assert.rejects(
+      () => app.run(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, 'STARTUP_SENTINEL');
+        return true;
+      },
+    );
+  });
+
+  it('M-11: app.run() rejects when startup validator fails', async () => {
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+
+    const OptionToken = Symbol('OptionToken');
+    builder.services.configure(OptionToken as any)
+      .validate(() => false, 'INVALID_CONFIG_SENTINEL')
+      .validateOnStart();
+
+    const app = builder.build();
+
+    await assert.rejects(
+      () => app.run(),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('INVALID_CONFIG_SENTINEL'));
+        return true;
+      },
+    );
+  });
+
+  it('M-12: hosted service resolved from DI via factory is disposed only once by container, not twice', async () => {
+    let disposeCount = 0;
+
+    class DiManagedWorker implements HostedService {
+      async start() {}
+      async stop() {}
+      dispose() {
+        disposeCount++;
+      }
+    }
+
+    const builder = AppHost.createBuilder();
+    builder.options.registerSignalHandlers = false;
+    builder.services.addSingleton(DiManagedWorker).toClass(DiManagedWorker);
+    builder.addHostedService((sp) => sp.get(DiManagedWorker));
+
+    const app = builder.build();
+
+    await app.start();
+    await app.dispose();
+
+    assert.equal(disposeCount, 1, 'Service owned by DI must only be disposed once by container');
+  });
 });

@@ -85,12 +85,16 @@ export class EndpointFilterPipeline {
       // Inline filter functions take (context, next) -> length >= 2
       // Factory functions take (sp) -> length === 1 or () -> length === 0
       if (filterItem.length <= 1) {
-        const instance = (filterItem as any)(ctx.httpContext.services);
+        const sp = ctx.httpContext.services;
+        const instance = (filterItem as any)(sp);
         if (instance && typeof instance.invokeAsync === 'function') {
+          const isOwnedByContainer = isContainerOwned(sp, instance);
           try {
             return await instance.invokeAsync(ctx, next);
           } finally {
-            await disposeFilter(instance);
+            if (!isOwnedByContainer) {
+              await disposeFilter(instance);
+            }
           }
         }
       }
@@ -101,6 +105,19 @@ export class EndpointFilterPipeline {
 
     throw new Error(`Unsupported endpoint filter: ${String(filterItem)}`);
   }
+}
+
+function isContainerOwned(sp: any, instance: any): boolean {
+  if (!sp || !instance || typeof instance !== 'object') {
+    return false;
+  }
+  if (typeof sp.isOwned === 'function') {
+    return sp.isOwned(instance);
+  }
+  if (sp.serviceProvider && typeof sp.serviceProvider.isOwned === 'function') {
+    return sp.serviceProvider.isOwned(instance);
+  }
+  return false;
 }
 
 async function disposeFilter(instance: any): Promise<void> {
