@@ -8,12 +8,18 @@ TSNX simplifies building scalable, multi-project TypeScript solutions by introdu
 
 | Package | Version | Description |
 |---|---|---|
-| [`@tsnx/core`](./packages/core) | `0.4.1` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
-| [`@tsnx/hosting-abstractions`](./packages/hosting-abstractions) | `0.4.1` | Zero-dependency contracts for DI (`IServiceCollection`), Config, Logging & Lifecycle |
-| [`@tsnx/hosting`](./packages/hosting) | `0.4.1` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
-| [`@tsnx/build`](./packages/build) | `0.4.1` | Compiler configuration generator, orchestrator, and package synchronization |
-| [`@tsnx/web`](./packages/web) | `0.4.1` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
-| [`@tsnx/cli`](./apps/cli) | `0.4.1` | Unified CLI (`tsnx create`, `build`, `run`, `test`, `watch`, `restore`) |
+| [`@tsnx/core`](./packages/core) | `1.0.0-rc.1` | Project manifests (`.tsproj`), workspaces (`.tswork`), and DAG dependency graph |
+| [`@tsnx/hosting-abstractions`](./packages/hosting-abstractions) | `1.0.0-rc.1` | Zero-dependency contracts for DI (`IServiceCollection`), Config, Logging & Lifecycle |
+| [`@tsnx/hosting`](./packages/hosting) | `1.0.0-rc.1` | Application hosting, Dependency Injection, Configuration, Logging & Hosted Services |
+| [`@tsnx/build`](./packages/build) | `1.0.0-rc.1` | Compiler configuration generator, orchestrator, and package synchronization |
+| [`@tsnx/web`](./packages/web) | `1.0.0-rc.1` | Native HTTP Web API engine, onion middleware, route matching, and request-scoped DI |
+| [`@tsnx/openapi`](./packages/openapi) | `1.0.0-rc.1` | Automatic OpenAPI 3.1 specification generation from route definitions |
+| [`@tsnx/scalar`](./packages/scalar) | `1.0.0-rc.1` | Embedded interactive Scalar API reference documentation endpoint |
+| [`@tsnx/cli`](./apps/cli) | `1.0.0-rc.1` | Unified CLI (`tsnx create`, `build`, `run`, `test`, `watch`, `restore`) |
+
+For differences from ASP.NET Core, see [Known Limitations & Differences](./docs/KNOWN_LIMITATIONS.md).
+For release history, see [Changelog](./CHANGELOG.md).
+For security policy, see [Security Policy](./SECURITY.md).
 
 ## Quick Start
 
