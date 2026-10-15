@@ -1033,6 +1033,17 @@ export const docs: Doc[] = [
         "code": "import {\n  WebApplication, Results, type IExceptionHandler, type HttpContext,\n} from '@tsnx/web';\n\nclass WarehouseConflict extends Error {}\n\nclass WarehouseErrors implements IExceptionHandler {\n  async tryHandleAsync(ctx: HttpContext, error: unknown) {\n    if (!(error instanceof WarehouseConflict)) return false;\n\n    await Results.problem({ title: 'Warehouse already exists', status: 409 })\n      .executeAsync(ctx);\n\n    return true;\n  }\n}\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.addExceptionHandler(WarehouseErrors);\n\nconst app = builder.build();\n\napp.mapPost('/warehouses', () => { throw new WarehouseConflict(); });"
       },
       {
+        "id": "validation-problem-details",
+        "title": "Map validation failures to Problem Details (RFC 9457)",
+        "text": "Translate application and domain validation failures into standard 400 Validation Problem Details using Results.validationProblem without mutating Error.name.",
+        "paragraphs": [
+          "Do not couple request binding with application validation or hack err.name = 'ValidationError'. Define a typed ValidationException carrying a Record<string, string[]> error map, and register an IExceptionHandler to translate it into standard RFC 9457 / RFC 9110 responses.",
+          "Results.validationProblem produces a 400 response with type 'https://tsnx.dev/problems/validation', status 400, and a structured errors property matching ASP.NET and modern HTTP API standards."
+        ],
+        "filename": "src/main.ts",
+        "code": "import {\n  WebApplication,\n  Results,\n  type IExceptionHandler,\n  type HttpContext,\n} from '@tsnx/web';\n\n// 1. Define typed domain/application validation exception\nexport class ValidationException extends Error {\n  constructor(\n    public readonly errors: Record<string, string[]>,\n    message = 'One or more validation errors occurred.'\n  ) {\n    super(message);\n    this.name = 'ValidationException';\n  }\n}\n\n// 2. Register first-class exception handler\nclass ValidationExceptionHandler implements IExceptionHandler {\n  async tryHandleAsync(ctx: HttpContext, error: unknown): Promise<boolean> {\n    if (error instanceof ValidationException) {\n      await Results.validationProblem(error.errors, error.message).executeAsync(ctx);\n      return true;\n    }\n    return false;\n  }\n}\n\nconst builder = WebApplication.createBuilder();\nbuilder.addExceptionHandler(ValidationExceptionHandler);\n\nconst app = builder.build();\n\napp.mapPost('/warehouses', () => {\n  throw new ValidationException({\n    name: ['Warehouse name is required.'],\n    capacity: ['Capacity must be greater than zero.'],\n  });\n});"
+      },
+      {
         "id": "handler-contract",
         "title": "Handler ordering and failure contracts",
         "text": "Handlers are tried in registration order. A false result must leave the response untouched; the pipeline restores unsent header/status changes. Starting a response and then returning false violates the contract and can close the connection. If a custom handler throws, the pipeline logs the failure and attempts the fallback response.",
@@ -1713,10 +1724,10 @@ export const docs: Doc[] = [
       {
         "id": "wire-references",
         "title": "Connect direct dependencies",
-        "text": "Run ref add from the consumer. The command updates its tsconfig.json references and package.json workspace dependencies, and ensures the target has composite/declaration settings.",
+        "text": "Run ref add from the consumer project. You can supply multiple target projects in a single command. It dual-wires tsconfig.json references and package.json workspace dependencies, and ensures target projects have composite/declaration compiler flags enabled.",
         "language": "bash",
         "filename": "Terminal",
-        "code": "cd Entrypoints/Host\ntsnx ref add Inventory\ncd ../../Modules/Inventory\ntsnx ref add SharedKernel\ncd ../..\ntsnx build\ntsnx run -p Host"
+        "code": "cd Entrypoints/Host\ntsnx ref add Inventory Ordering SharedKernel\ncd ../..\ntsnx build\ntsnx run -p Host"
       },
       {
         "id": "import-library",
@@ -1789,8 +1800,8 @@ export const docs: Doc[] = [
               "Unregister a project; --delete also removes its files"
             ],
             [
-              "tsnx ref remove <target>",
-              "Remove a direct reference and package dependency"
+              "tsnx ref remove <target...>",
+              "Remove direct reference(s) and workspace dependencies"
             ],
             [
               "tsnx build",
@@ -1825,8 +1836,8 @@ export const docs: Doc[] = [
               "List workspace projects"
             ],
             [
-              "tsnx ref add <target>",
-              "Add a reference to the current project"
+              "tsnx ref add <target...>",
+              "Add project reference(s) to the current project (dual-wiring)"
             ]
           ]
         }

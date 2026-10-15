@@ -133,6 +133,17 @@ tsnx create console MyWorker
 tsnx create library MyDomain
 ```
 
+### Workspace & Project References
+
+```bash
+# Initialize a solution workspace
+tsnx workspace init Acme --scope @acme
+
+# Connect dependencies with automatic dual-wiring (tsconfig references + package.json)
+cd apps/Host
+tsnx ref add Domain Contracts
+```
+
 ---
 
 ## Documentation and Resources
