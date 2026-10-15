@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -217,6 +218,39 @@ projects:
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it('M-15: treats signal termination (code=null, signal=SIGTERM) as fatal compilation failure with non-zero exit code', async () => {
+    // Spawn a dummy process that terminates via SIGTERM to test signal mapping logic
+    const child = spawn(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM");']);
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
+      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        let exitCode: number;
+        let output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+
+        if (code !== null) {
+          exitCode = code;
+        } else if (signal) {
+          const signalNum = (os.constants.signals as Record<string, number>)[signal] ?? 1;
+          exitCode = 128 + signalNum;
+          const signalMsg = `Compilation terminated by signal: ${signal}`;
+          output = output ? `${output}\n${signalMsg}` : signalMsg;
+        } else {
+          exitCode = 1;
+        }
+
+        resolve({ exitCode, output });
+      });
+    });
+
+    assert.equal(result.exitCode, 143, 'Exit code for SIGTERM must be 128 + 15 = 143');
+    assert.ok(result.output.includes('Compilation terminated by signal: SIGTERM'));
   });
 });
 

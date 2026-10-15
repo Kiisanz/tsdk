@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { ProjectGraph, TsProject, TsWorkspace, isNativeProject, isNativeWorkspace } from '@tsnx/core';
 import { ConfigGenerator } from '../generator/config-generator.js';
@@ -205,7 +206,7 @@ export class BuildOrchestrator {
     return this.buildWorkspace(workspace, graph, { clean: true });
   }
 
-  private static executeTsc(
+  static executeTsc(
     args: string[],
     cwd: string,
   ): Promise<{ exitCode: number; output: string }> {
@@ -227,9 +228,21 @@ export class BuildOrchestrator {
         stderr += data.toString();
       });
 
-      child.on('close', (code) => {
-        const exitCode = code ?? 0;
-        const output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+      child.on('close', (code, signal) => {
+        let exitCode: number;
+        let output = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+
+        if (code !== null) {
+          exitCode = code;
+        } else if (signal) {
+          const signalNum = (os.constants.signals as Record<string, number>)[signal] ?? 1;
+          exitCode = 128 + signalNum;
+          const signalMsg = `Compilation terminated by signal: ${signal}`;
+          output = output ? `${output}\n${signalMsg}` : signalMsg;
+        } else {
+          exitCode = 1;
+        }
+
         resolve({ exitCode, output });
       });
 

@@ -254,4 +254,72 @@ describe('tsnx run command options & workspace execution', () => {
       (err: any) => err.code === 'ESRCH',
     );
   });
+
+  it('M-16: tsnx run maps signal termination to a non-zero exit code', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsnx-run-sig-'));
+
+    try {
+      execFileSync(process.execPath, [CLI_BIN, 'create', 'console', 'SigApp', '--no-install'], {
+        cwd: tmpDir,
+        encoding: 'utf-8',
+      });
+
+      const appDir = path.join(tmpDir, 'SigApp');
+      const mainPath = path.join(appDir, 'src', 'main.ts');
+
+      // Application outputs READY then keeps running
+      fs.writeFileSync(
+        mainPath,
+        `console.log('READY_FOR_SIGNAL');
+setInterval(() => {}, 1000);
+`,
+        'utf-8',
+      );
+
+      // Build app first
+      execFileSync(process.execPath, [CLI_BIN, 'build'], {
+        cwd: appDir,
+        encoding: 'utf-8',
+      });
+
+      // Run app via tsnx run
+      const cliChild = spawn(process.execPath, [CLI_BIN, 'run', '--no-build'], {
+        cwd: appDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      // Wait until child is running
+      await new Promise<void>((resolve, reject) => {
+        let output = '';
+        const onData = (data: Buffer) => {
+          output += data.toString();
+          if (output.includes('READY_FOR_SIGNAL')) {
+            cliChild.stdout?.removeListener('data', onData);
+            resolve();
+          }
+        };
+        cliChild.stdout?.on('data', onData);
+        cliChild.on('error', reject);
+      });
+
+      // Send SIGTERM to the CLI process
+      cliChild.kill('SIGTERM');
+
+      const exitStatus = await new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((resolve) => {
+        cliChild.on('close', (code, sig) => {
+          resolve({ code, sig });
+        });
+      });
+
+      // Must exit with a non-zero exit code (128 + 15 = 143 or signalCode SIGTERM)
+      if (exitStatus.code !== null) {
+        assert.notEqual(exitStatus.code, 0, 'CLI exit code must not be 0 when terminated by signal');
+        assert.equal(exitStatus.code, 143, 'CLI exit code for SIGTERM must be 128 + 15 = 143');
+      } else {
+        assert.equal(exitStatus.sig, 'SIGTERM');
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
