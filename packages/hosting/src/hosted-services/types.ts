@@ -1,1 +1,1 @@
-export { type HostedService, HOSTED_SERVICE_TOKEN } from '@tsnx/hosting-abstractions';
+export { type HostedService, type IHostedService, HOSTED_SERVICE_TOKEN } from '@tsnx/hosting-abstractions';
