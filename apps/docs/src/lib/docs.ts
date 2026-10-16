@@ -1777,6 +1777,41 @@ export const docs: Doc[] = [
         "text": "Access schema operations and connectivity checks via db.database. You can run migrations programmatically during application startup using a temporary scope, mirroring ASP.NET Core conventions.",
         "filename": "src/main.ts",
         "code": "const app = builder.build();\n\n// Run pending migrations before accepting incoming traffic\nawait using (const scope = app.services.createScope()) {\n  const db = scope.get(MikroDbContext);\n  const ready = await db.database.canConnect();\n  if (ready) {\n    await db.database.migrate();\n  }\n}\n\nawait app.run();"
+      },
+      {
+        "id": "bulk-operations",
+        "title": "Bulk operations (executeUpdate & executeDelete)",
+        "text": "Perform bulk updates and deletes directly in the database without loading entities into memory or change tracking, mirroring EF Core 7+ ExecuteUpdate and ExecuteDelete.",
+        "filename": "src/endpoints/maintenance.ts",
+        "code": "app.mapPost('/maintenance/deactivate-stale', async (db: MikroDbContext) => {\n  const affectedRows = await db.set(User).executeUpdate(\n    { lastLoginAt: { $lt: new Date('2025-01-01') } },\n    { isActive: false }\n  );\n  return { deactivated: affectedRows };\n});"
+      },
+      {
+        "id": "value-converters",
+        "title": "Value converters for domain value objects",
+        "text": "Map custom domain Value Objects (e.g. Money, Address, Email) to and from database primitives using createValueConverterType().",
+        "filename": "src/converters/money.converter.ts",
+        "code": "import { createValueConverterType } from '@tsnx/mikro-orm';\nimport type { IValueConverter } from '@tsnx/data';\n\nexport class Money {\n  constructor(readonly amount: number, readonly currency: string) {}\n}\n\nexport const MoneyConverter: IValueConverter<Money, string> = {\n  convertToDatabase: (m) => `${m.amount} ${m.currency}`,\n  convertToModel: (str) => {\n    const [amount, currency] = str.split(' ');\n    return new Money(Number(amount), currency);\n  },\n};\n\nexport const MoneyType = createValueConverterType('MoneyType', MoneyConverter, 'varchar(50)');"
+      },
+      {
+        "id": "command-interceptors",
+        "title": "Query diagnostics with DbCommandInterceptor",
+        "text": "Observe and diagnose raw SQL statements, parameters, and query execution times using command interceptors.",
+        "filename": "src/main.ts",
+        "code": "import { type IDbCommandInterceptor } from '@tsnx/data';\n\nconst queryDiagnostics: IDbCommandInterceptor = {\n  afterExecute(context) {\n    if (context.durationMs && context.durationMs > 200) {\n      console.warn(`[SLOW QUERY]: ${context.command} took ${context.durationMs}ms`);\n    }\n  },\n};\n\naddMikroOrm(builder.services, config, {\n  interceptors: [queryDiagnostics],\n});"
+      },
+      {
+        "id": "compiled-queries-and-caching",
+        "title": "Compiled queries and result caching",
+        "text": "Pre-plan query execution with in-memory caching windows for hot read paths using createCompiledQuery.",
+        "filename": "src/queries/featured-products.ts",
+        "code": "import { createCompiledQuery } from '@tsnx/data';\nimport { MikroDbContext } from '@tsnx/mikro-orm';\nimport { Product } from '../entities/product.entity.js';\n\nexport const getFeaturedProducts = createCompiledQuery(\n  async (db: MikroDbContext, category: string) => {\n    return await db.set(Product).findMany(\n      { category, isFeatured: true },\n      { asNoTracking: true, take: 10 }\n    );\n  },\n  { ttlMs: 30000, cacheKey: 'featured-products' }\n);"
+      },
+      {
+        "id": "dbcontext-pooling",
+        "title": "DbContext pooling (DbContextPool)",
+        "text": "Reuse DbContext instances across high-frequency worker loops to eliminate garbage collection allocations.",
+        "filename": "src/workers/batch.worker.ts",
+        "code": "import { DbContextPool } from '@tsnx/data';\nimport { MikroDbContext } from '@tsnx/mikro-orm';\n\nconst pool = new DbContextPool<MikroDbContext>(() => factory.createDbContext(), {\n  maxPoolSize: 16,\n});\n\nconst db = pool.get();\ntry {\n  // Perform high-throughput work\n} finally {\n  pool.return(db);\n}"
       }
     ],
     "sources": [
