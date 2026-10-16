@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-16
+
+### Added
+- **Enterprise CORS Middleware**: Added `app.useCors()` and `builder.addCors()` supporting fluent policies (`withOrigins`, `allowAnyOrigin`, `withMethods`, `allowAnyMethod`, `withHeaders`, `allowAnyHeader`, `allowCredentials`, `setPreflightMaxAge`), credentials origin reflection with `Vary: Origin`, preflight short-circuiting (204 No Content), and endpoint/group overrides (`.requireCors()`, `.disableCors()`).
+- **Forwarded Headers Middleware**: Added `app.useForwardedHeaders()` and `builder.configureForwardedHeaders()` with reverse proxy trust evaluation (`knownProxies`, `knownNetworks` IPv4 CIDR matching, loopback trust, forwardLimit peeling) updating `request.clientIp`, `request.scheme`, `request.isHttps`, and `request.host`.
+- **Rate Limiting Middleware**: Added `app.useRateLimiter()` and `builder.addRateLimiter()` supporting Fixed Window, Sliding Window, Token Bucket, and Concurrency algorithms, dynamic request partitioning, 429 Problem Details with `Retry-After` header, and endpoint/group overrides (`.requireRateLimiting()`, `.disableRateLimiting()`).
+- **Class-Based Scoped Middleware**: Added `IMiddleware` interface and `app.useMiddleware<T>(Class)` with request-scoped DI container resolution.
+- **Problem Details Customization Hook**: Added `customizeProblemDetails(ctx, problem)` hook via `builder.services.addProblemDetails(...)` to enrich RFC 9457 responses across binding errors, 404s, and unhandled exceptions with `ctx.traceIdentifier` correlation ID.
+- **Hierarchical Category Logging**: Added longest-prefix category matching in `ILoggerFactory` and automatic binding of `Logging:LogLevel` configuration sections.
+- **Builder Settings Parity**: Extended `WebApplication.createBuilder(argsOrSettings)` to accept `HostApplicationBuilderSettings` (`contentRootPath`, `environment`, `args`).
+- **Integration Testing Package (@tsnx/testing)**: Full test harness with `WebApplicationFactory`, `TestHttpClient`, and scoped DI overrides.
+
+---
+
 ## [1.0.2] - 2026-10-16
 
 ### Fixed
