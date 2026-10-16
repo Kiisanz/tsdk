@@ -42,6 +42,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
       { name: 'hosting', pkgDir: path.join(monorepoRoot, 'packages', 'hosting') },
       { name: 'build', pkgDir: path.join(monorepoRoot, 'packages', 'build') },
       { name: 'web', pkgDir: path.join(monorepoRoot, 'packages', 'web') },
+      { name: 'testing', pkgDir: path.join(monorepoRoot, 'packages', 'testing') },
       { name: 'cli', pkgDir: path.join(monorepoRoot, 'apps', 'cli') },
     ];
 
@@ -229,10 +230,10 @@ it('adds two numbers correctly', () => {
         assert.ok(createApiOutput.includes('Project created successfully!'));
 
         const apiDir = path.join(consumerDir, 'MyApi');
-        // Install @tsnx/web, @tsnx/hosting, and @tsnx/hosting-abstractions in MyApi using the tarballs
+        // Install @tsnx/web, @tsnx/hosting, @tsnx/hosting-abstractions, and @tsnx/testing in MyApi using the tarballs
         execFileSync(
           npmCmd,
-          ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting, tarballPaths['hosting-abstractions']],
+          ['install', '--no-package-lock', tarballPaths.web, tarballPaths.hosting, tarballPaths['hosting-abstractions'], tarballPaths.testing],
           {
             cwd: apiDir,
             encoding: 'utf-8',
@@ -249,6 +250,17 @@ it('adds two numbers correctly', () => {
         });
         assert.ok(buildApiOutput.includes('Build succeeded'));
         assert.ok(fs.existsSync(path.join(apiDir, 'dist', 'main.js')));
+        assert.ok(fs.existsSync(path.join(apiDir, 'dist', 'app.js')));
+        assert.ok(fs.existsSync(path.join(apiDir, 'dist', 'app.test.js')));
+
+        // Run tests with tsnx test
+        const testApiOutput = execFileSync(consumerTsnxBin, ['test'], {
+          cwd: apiDir,
+          encoding: 'utf-8',
+          shell: isWindows,
+        });
+        assert.ok(testApiOutput.includes('Running tests for "MyApi"'));
+        assert.ok(testApiOutput.includes('All tests passed successfully.'));
 
         // Run Web API and query HTTP endpoints
         const testPort = 42899;

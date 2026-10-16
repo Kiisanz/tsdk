@@ -136,6 +136,19 @@ export class TemplateGenerator {
 }
 `;
       fs.writeFileSync(path.join(srcDir, 'index.ts'), indexTsContent, 'utf-8');
+
+      // src/index.test.ts
+      const testTsContent = `import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { add } from './index.js';
+
+describe('${name}', () => {
+  it('should add two numbers correctly', () => {
+    assert.equal(add(2, 3), 5);
+  });
+});
+`;
+      fs.writeFileSync(path.join(srcDir, 'index.test.ts'), testTsContent, 'utf-8');
     } else if (template === 'webapi') {
       // package.json
       const pkgJson = {
@@ -151,6 +164,7 @@ export class TemplateGenerator {
           '@tsnx/web': `^${VERSION}`,
         },
         devDependencies: {
+          '@tsnx/testing': `^${VERSION}`,
           '@types/node': '^22.13.9',
         },
       };
@@ -160,29 +174,81 @@ export class TemplateGenerator {
         'utf-8',
       );
 
-      // src/main.ts
-      const mainTsContent = `import process from 'node:process';
+      // src/app.ts
+      const appTsContent = `import process from 'node:process';
 import { WebApplication, Results } from '@tsnx/web';
 
-const builder = WebApplication.createBuilder(process.argv.slice(2));
+export function createApp(args: string[] = []) {
+  const builder = WebApplication.createBuilder(args);
 
-// Configure server (reads PORT environment variable or defaults to 3000)
-const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-builder.configureServer({ port, host: '0.0.0.0' });
+  // Configure server (reads PORT environment variable or defaults to 3000)
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  builder.configureServer({ port, host: '0.0.0.0' });
 
-const app = builder.build();
+  const app = builder.build();
 
-app.mapGet('/', () => {
-  return Results.json({ message: 'Welcome to ${name} API!' });
-});
+  app.mapGet('/', () => {
+    return Results.json({ message: 'Welcome to ${name} API!' });
+  });
 
-app.mapGet('/health', () => {
-  return Results.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  app.mapGet('/health', () => {
+    return Results.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
+  return app;
+}
+`;
+      fs.writeFileSync(path.join(srcDir, 'app.ts'), appTsContent, 'utf-8');
+
+      // src/main.ts
+      const mainTsContent = `import process from 'node:process';
+import { createApp } from './app.js';
+
+const app = createApp(process.argv.slice(2));
 await app.run();
 `;
       fs.writeFileSync(path.join(srcDir, 'main.ts'), mainTsContent, 'utf-8');
+
+      // src/app.test.ts
+      const testTsContent = `import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { WebApplicationFactory } from '@tsnx/testing';
+import { createApp } from './app.js';
+
+describe('${name} API Integration Tests', () => {
+  it('GET /health returns 200 ok', async () => {
+    const factory = new WebApplicationFactory(createApp, { silent: true });
+
+    try {
+      const client = await factory.createClient();
+      const res = await client.get('/health');
+
+      assert.equal(res.status, 200);
+      const data = await res.json<{ status: string; timestamp: string }>();
+      assert.equal(data.status, 'ok');
+      assert.ok(data.timestamp);
+    } finally {
+      await factory.dispose();
+    }
+  });
+
+  it('GET / returns welcome message', async () => {
+    const factory = new WebApplicationFactory(createApp, { silent: true });
+
+    try {
+      const client = await factory.createClient();
+      const res = await client.get('/');
+
+      assert.equal(res.status, 200);
+      const data = await res.json<{ message: string }>();
+      assert.equal(data.message, 'Welcome to ${name} API!');
+    } finally {
+      await factory.dispose();
+    }
+  });
+});
+`;
+      fs.writeFileSync(path.join(srcDir, 'app.test.ts'), testTsContent, 'utf-8');
     } else {
       throw new Error(`Unsupported template "${template}". Supported templates: console, library, webapi.`);
     }

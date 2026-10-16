@@ -68,6 +68,7 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       assert.ok(fs.existsSync(path.join(projectDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(projectDir, 'src', 'index.ts')));
+      assert.ok(fs.existsSync(path.join(projectDir, 'src', 'index.test.ts')));
 
       const proj = TsProject.loadSync(projectDir);
       assert.equal(proj.name, 'MyLib');
@@ -81,6 +82,13 @@ describe('@tsnx/cli Scaffolding & Execution', () => {
       assert.ok(buildOutput.includes('Build succeeded'));
       assert.ok(fs.existsSync(path.join(projectDir, 'dist', 'index.js')));
       assert.ok(fs.existsSync(path.join(projectDir, 'dist', 'index.d.ts')));
+
+      // 3. tsdk test
+      const testOutput = execFileSync(process.execPath, [CLI_BIN, 'test'], {
+        cwd: projectDir,
+        encoding: 'utf-8',
+      });
+      assert.ok(testOutput.includes('All tests passed successfully.'));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -244,17 +252,21 @@ console.log('Calculation:', add(10, 25));
       assert.ok(fs.existsSync(path.join(apiDir, 'tsconfig.json')));
       assert.ok(fs.existsSync(path.join(apiDir, 'package.json')));
       assert.ok(fs.existsSync(path.join(apiDir, 'src', 'main.ts')));
+      assert.ok(fs.existsSync(path.join(apiDir, 'src', 'app.ts')));
+      assert.ok(fs.existsSync(path.join(apiDir, 'src', 'app.test.ts')));
 
       // Verify loaded as valid TsProject with spec.type: webapi
       const proj = TsProject.loadSync(apiDir);
       assert.equal(proj.name, 'MyApi');
       assert.equal(proj.type, 'webapi');
 
-      // Link node_modules so compiled code can import @tsnx/web, @tsnx/hosting, @tsnx/hosting-abstractions and @types/node
+      // Link node_modules so compiled code can import @tsnx/web, @tsnx/hosting, @tsnx/hosting-abstractions, @tsnx/testing, @tsnx/core and @types/node
       const monorepoRoot = path.resolve(fileURLToPath(new URL('../../../..', import.meta.url)));
       const webPkgDir = path.join(monorepoRoot, 'packages', 'web');
       const hostingPkgDir = path.join(monorepoRoot, 'packages', 'hosting');
       const hostingAbstractionsPkgDir = path.join(monorepoRoot, 'packages', 'hosting-abstractions');
+      const testingPkgDir = path.join(monorepoRoot, 'packages', 'testing');
+      const corePkgDir = path.join(monorepoRoot, 'packages', 'core');
 
       const apiModules = path.join(apiDir, 'node_modules', '@tsnx');
       fs.mkdirSync(apiModules, { recursive: true });
@@ -267,9 +279,17 @@ console.log('Calculation:', add(10, 25));
       if (fs.existsSync(path.join(apiModules, 'hosting-abstractions'))) {
         fs.rmSync(path.join(apiModules, 'hosting-abstractions'), { recursive: true, force: true });
       }
+      if (fs.existsSync(path.join(apiModules, 'testing'))) {
+        fs.rmSync(path.join(apiModules, 'testing'), { recursive: true, force: true });
+      }
+      if (fs.existsSync(path.join(apiModules, 'core'))) {
+        fs.rmSync(path.join(apiModules, 'core'), { recursive: true, force: true });
+      }
       fs.symlinkSync(webPkgDir, path.join(apiModules, 'web'), 'junction');
       fs.symlinkSync(hostingPkgDir, path.join(apiModules, 'hosting'), 'junction');
       fs.symlinkSync(hostingAbstractionsPkgDir, path.join(apiModules, 'hosting-abstractions'), 'junction');
+      fs.symlinkSync(testingPkgDir, path.join(apiModules, 'testing'), 'junction');
+      fs.symlinkSync(corePkgDir, path.join(apiModules, 'core'), 'junction');
 
       // Link node_modules/@types
       const monorepoTypes = path.join(monorepoRoot, 'node_modules', '@types');
@@ -339,6 +359,13 @@ console.log('Calculation:', add(10, 25));
           child.kill('SIGKILL');
         }
       }
+
+      // 5. Verify tsdk test executes integration tests and passes out of the box
+      const testOutput = execFileSync(process.execPath, [CLI_BIN, 'test'], {
+        cwd: apiDir,
+        encoding: 'utf-8',
+      });
+      assert.ok(testOutput.includes('All tests passed successfully.'));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

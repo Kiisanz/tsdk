@@ -175,6 +175,9 @@ Examples:
       } else {
         console.log(`  tsnx build`);
       }
+      if (template === 'webapi' || template === 'library') {
+        console.log(`  tsnx test`);
+      }
       console.log('');
       return 0;
     }
@@ -193,6 +196,9 @@ Examples:
       } else {
         console.log(`  tsnx build`);
       }
+      if (template === 'webapi' || template === 'library') {
+        console.log(`  tsnx test`);
+      }
       console.log('');
       return 0;
     } catch (err: unknown) {
@@ -204,6 +210,9 @@ Examples:
         console.log(`  tsnx run`);
       } else {
         console.log(`  tsnx build`);
+      }
+      if (template === 'webapi' || template === 'library') {
+        console.log(`  tsnx test`);
       }
       console.log('');
       return 1;
