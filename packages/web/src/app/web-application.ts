@@ -69,6 +69,21 @@ export class WebApplicationBuilder {
     return this;
   }
 
+  public configureServices(configure: (services: ServiceCollection) => void): this {
+    configure(this.services);
+    return this;
+  }
+
+  public configureLogging(configure: (logging: LoggerFactory) => void): this {
+    configure(this.logging);
+    return this;
+  }
+
+  public configureAppConfiguration(configure: (config: IConfiguration) => void): this {
+    configure(this.configuration);
+    return this;
+  }
+
   public configureServer(options: HttpServerOptions): this {
     Object.assign(this.serverOptions, options);
     return this;
@@ -143,6 +158,46 @@ export class WebApplication {
 
   public get serverOptions(): Readonly<HttpServerOptions> {
     return this.effectiveServerOptions ?? this.initialServerOptions;
+  }
+
+  public get hostOptions(): HostOptions {
+    return this.hostBuilder.options;
+  }
+
+  public get logging(): LoggerFactory {
+    return this.hostBuilder.logging;
+  }
+
+  public configureServices(configure: (services: ServiceCollection) => void): this {
+    if (this.appHost) {
+      throw new Error('Cannot configure services after the application has started.');
+    }
+    configure(this.hostBuilder.services);
+    return this;
+  }
+
+  public configureLogging(configure: (logging: LoggerFactory) => void): this {
+    if (this.appHost) {
+      throw new Error('Cannot configure logging after the application has started.');
+    }
+    configure(this.hostBuilder.logging);
+    return this;
+  }
+
+  public configureAppConfiguration(configure: (config: IConfiguration) => void): this {
+    if (this.appHost) {
+      throw new Error('Cannot configure application configuration after the application has started.');
+    }
+    configure(this.hostBuilder.config);
+    return this;
+  }
+
+  public configureServer(options: HttpServerOptions): this {
+    if (this.appHost) {
+      throw new Error('Cannot configure server options after the application has started.');
+    }
+    Object.assign(this.initialServerOptions, options);
+    return this;
   }
 
   public get listeningPort(): number | undefined {
