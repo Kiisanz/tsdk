@@ -129,7 +129,7 @@ describe('TSNX Packaging & Isolated Consumer Verification', () => {
           encoding: 'utf-8',
           shell: isWindows,
         });
-        assert.ok(versionOutput.includes('1.0.1'));
+        assert.ok(versionOutput.includes('1.0.2'));
 
         // B. Consumer: Console Application (create -> build -> run)
         const createConsoleOutput = execFileSync(

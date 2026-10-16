@@ -1,6 +1,6 @@
 {
   "name": "@tsnx/web",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "TSNX Web API Foundation - HTTP server, routing, middleware pipeline, and request-scoped lifecycle",
   "license": "MIT",
   "type": "module",
