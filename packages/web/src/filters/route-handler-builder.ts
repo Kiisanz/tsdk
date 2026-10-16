@@ -7,6 +7,9 @@ import type {
   ProducesProblemMetadata,
 } from '../metadata/types.js';
 import { EndpointMetadataCollection } from '../metadata/collection.js';
+import { ENABLE_CORS_KEY, DISABLE_CORS_KEY } from '../cors/types.js';
+import { ENABLE_RATE_LIMITING_KEY, DISABLE_RATE_LIMITING_KEY } from '../rate-limiting/types.js';
+
 
 /**
  * Builds and configures an endpoint route, including its filters and structured metadata.
@@ -261,6 +264,42 @@ export class RouteHandlerBuilder {
     }
 
     return collection;
+  }
+
+  /**
+   * Requires CORS on this endpoint, optionally specifying a named policy.
+   * Modeled after ASP.NET Core [EnableCors] / .RequireCors().
+   */
+  public requireCors(policyName?: string): this {
+    this.withMetadata(ENABLE_CORS_KEY, { policyName });
+    return this;
+  }
+
+  /**
+   * Disables CORS on this endpoint.
+   * Modeled after ASP.NET Core [DisableCors] / .DisableCors().
+   */
+  public disableCors(): this {
+    this.withMetadata(DISABLE_CORS_KEY, { disabled: true });
+    return this;
+  }
+
+  /**
+   * Requires rate limiting on this endpoint, optionally specifying a named policy.
+   * Modeled after ASP.NET Core [EnableRateLimiting] / .RequireRateLimiting().
+   */
+  public requireRateLimiting(policyName?: string): this {
+    this.withMetadata(ENABLE_RATE_LIMITING_KEY, { policyName });
+    return this;
+  }
+
+  /**
+   * Disables rate limiting on this endpoint.
+   * Modeled after ASP.NET Core [DisableRateLimiting] / .DisableRateLimiting().
+   */
+  public disableRateLimiting(): this {
+    this.withMetadata(DISABLE_RATE_LIMITING_KEY, { disabled: true });
+    return this;
   }
 
   /**

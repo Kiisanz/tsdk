@@ -1,4 +1,5 @@
 import { IncomingMessage, ServerResponse, validateHeaderName, validateHeaderValue } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { IServiceProvider } from '@tsnx/hosting';
@@ -9,6 +10,14 @@ import { BindingSchema, Infer } from '../binding/types.js';
 import { RequestBindingException } from '../binding/binding-error.js';
 import { ProblemDetailsInput, BadHttpRequestException } from '../errors/types.js';
 import { formatProblemDetails } from '../errors/problem-details.js';
+import { PROBLEM_DETAILS_OPTIONS } from '../errors/problem-details-options.js';
+
+export interface ConnectionInfo {
+  remoteAddress?: string;
+  remotePort?: number;
+  localAddress?: string;
+  localPort?: number;
+}
 
 export class HttpRequest {
   public readonly method: string;
@@ -21,6 +30,10 @@ export class HttpRequest {
   private readonly maxBodySizeBytes: number;
   private bodyStream?: Readable;
 
+  private _clientIp: string;
+  private _scheme: 'http' | 'https';
+  private _host: string;
+
   constructor(req: IncomingMessage, signal: AbortSignal, maxBodySizeBytes = 1024 * 1024) {
     this.req = req;
     this.signal = signal;
@@ -29,7 +42,12 @@ export class HttpRequest {
     this.headers = req.headers;
     this.maxBodySizeBytes = maxBodySizeBytes;
 
-    const dummyHost = req.headers.host ? `http://${req.headers.host}` : 'http://localhost';
+    this._clientIp = req.socket?.remoteAddress ?? '';
+    this._scheme = (req.socket as any)?.encrypted ? 'https' : 'http';
+    const rawHost = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
+    this._host = rawHost ?? 'localhost';
+
+    const dummyHost = rawHost ? `http://${rawHost}` : 'http://localhost';
     try {
       const parsedUrl = new URL(this.url, dummyHost);
       this.path = parsedUrl.pathname;
@@ -38,6 +56,41 @@ export class HttpRequest {
       this.path = this.url.split('?')[0] || '/';
       this.query = new URLSearchParams();
     }
+  }
+
+  public get clientIp(): string {
+    return this._clientIp;
+  }
+
+  public get scheme(): 'http' | 'https' {
+    return this._scheme;
+  }
+
+  public get isHttps(): boolean {
+    return this._scheme === 'https';
+  }
+
+  public get host(): string {
+    return this._host;
+  }
+
+  public get protocol(): string {
+    return `${this._scheme}:`;
+  }
+
+  /**
+   * Internal mutator used by ForwardedHeadersMiddleware.
+   */
+  public setClientIp(ip: string): void {
+    this._clientIp = ip;
+  }
+
+  public setScheme(scheme: 'http' | 'https'): void {
+    this._scheme = scheme;
+  }
+
+  public setHost(host: string): void {
+    this._host = host;
   }
 
   /**
@@ -400,11 +453,40 @@ export class HttpResponse {
     }
   }
 
+  private httpContext?: HttpContext;
+
+  public setHttpContext(ctx: HttpContext): void {
+    this.httpContext = ctx;
+  }
+
   public async writeProblem(input: ProblemDetailsInput): Promise<void> {
     if (this.res.headersSent || this.res.writableEnded) {
       return;
     }
     const problem = formatProblemDetails(input);
+    if (this.httpContext) {
+      try {
+        const options = this.httpContext.services.get(PROBLEM_DETAILS_OPTIONS);
+        if (options && typeof options.customize === 'function') {
+          options.customize(this.httpContext, problem);
+          if (problem.extensions && typeof problem.extensions === 'object') {
+            for (const [key, value] of Object.entries(problem.extensions)) {
+              if (
+                key !== 'type' &&
+                key !== 'title' &&
+                key !== 'status' &&
+                key !== 'detail' &&
+                key !== 'instance'
+              ) {
+                problem[key] = value;
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore resolution error if options are not registered
+      }
+    }
     this.setHeader('Content-Type', 'application/problem+json; charset=utf-8');
     await this.writeJson(problem, problem.status);
   }
@@ -530,6 +612,8 @@ export class HttpContext {
   public get requestServices(): IServiceProvider {
     return this.services;
   }
+  public readonly connection: ConnectionInfo;
+  public readonly traceIdentifier: string;
   public readonly items: Map<string, any> = new Map();
   public params: Record<string, string> = {};
 
@@ -542,6 +626,15 @@ export class HttpContext {
   ) {
     this.request = new HttpRequest(req, abortSignal, maxBodySizeBytes);
     this.response = new HttpResponse(res, this.request.method, abortSignal);
+    this.response.setHttpContext(this);
     this.services = services;
+    const rawTrace = req.headers['x-request-id'];
+    this.traceIdentifier = (Array.isArray(rawTrace) ? rawTrace[0] : rawTrace) || randomUUID();
+    this.connection = {
+      remoteAddress: req.socket?.remoteAddress,
+      remotePort: req.socket?.remotePort,
+      localAddress: req.socket?.localAddress,
+      localPort: req.socket?.localPort,
+    };
   }
 }

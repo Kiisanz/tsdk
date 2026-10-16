@@ -1,5 +1,6 @@
 import {
   HostApplicationBuilder,
+  HostApplicationBuilderSettings,
   ServiceCollection,
   IConfiguration,
   LoggerFactory,
@@ -14,12 +15,24 @@ import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
 import { Middleware, MiddlewarePipeline, RequestDelegate } from '../middleware/pipeline.js';
 import { createExceptionHandlerMiddleware } from '../middleware/exception-handler.js';
-import { Router } from '../routing/router.js';
+import { IMiddleware, MiddlewareConstructor } from '../middleware/types.js';
+import {
+  createForwardedHeadersMiddleware,
+  ForwardedHeadersOptions,
+  FORWARDED_HEADERS_OPTIONS,
+} from '../middleware/forwarded-headers.js';
+import { createCorsMiddleware, CorsPolicy, CorsOptions } from '../cors/index.js';
+import {
+  createRateLimiterMiddleware,
+  RateLimiterOptions,
+} from '../rate-limiting/index.js';
+import { Router, RoutingResult } from '../routing/router.js';
 import { HttpServerHostedService, HttpServerOptions } from '../server/http-server.js';
 import {
   IExceptionHandler,
   EXCEPTION_HANDLER_TOKEN,
   ExceptionHandlerPipeline,
+  ProblemDetailsOptions,
 } from '../errors/index.js';
 import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
 import { EndpointFilterPipeline } from '../filters/filter-pipeline.js';
@@ -40,8 +53,8 @@ export class WebApplicationBuilder {
   private readonly builder: HostApplicationBuilder;
   private readonly serverOptions: HttpServerOptions = {};
 
-  constructor(args: string[] = []) {
-    this.builder = new HostApplicationBuilder(args);
+  constructor(argsOrSettings: string[] | HostApplicationBuilderSettings = []) {
+    this.builder = new HostApplicationBuilder(argsOrSettings);
   }
 
   public get services(): ServiceCollection {
@@ -94,6 +107,28 @@ export class WebApplicationBuilder {
     ...dependencies: any[]
   ): this {
     this.services.addExceptionHandler(handler, ...dependencies);
+    return this;
+  }
+
+  public addProblemDetails(configure?: (options: ProblemDetailsOptions) => void): this {
+    this.services.addProblemDetails(configure);
+    return this;
+  }
+
+  public addCors(configure?: (options: CorsOptions) => void): this {
+    this.services.addCors(configure);
+    return this;
+  }
+
+  public addRateLimiter(configure?: (options: RateLimiterOptions) => void): this {
+    this.services.addRateLimiter(configure);
+    return this;
+  }
+
+  public configureForwardedHeaders(configure: (options: ForwardedHeadersOptions) => void): this {
+    const options: ForwardedHeadersOptions = {};
+    configure(options);
+    this.services.addSingleton(FORWARDED_HEADERS_OPTIONS, options);
     return this;
   }
 
@@ -206,6 +241,58 @@ export class WebApplication {
 
   public use(middleware: Middleware): this {
     this.pipeline.use(middleware);
+    return this;
+  }
+
+  /**
+   * Adds a class-based middleware component to the application's request pipeline.
+   * Resolves the middleware from request scoped services on each request.
+   * Modeled after ASP.NET Core UseMiddleware<T>().
+   */
+  public useMiddleware<T extends IMiddleware>(middlewareType: MiddlewareConstructor<T>): this {
+    this.use(async (ctx, next) => {
+      let instance: T | undefined;
+      try {
+        instance = ctx.requestServices.get(middlewareType);
+      } catch (err: unknown) {
+        throw new Error(
+          `Failed to resolve middleware "${middlewareType.name}" from request services. Make sure it is registered in services via builder.services.addScoped(${middlewareType.name}) or builder.services.addTransient(${middlewareType.name}).`
+        );
+      }
+      if (!instance) {
+        throw new Error(
+          `Middleware "${middlewareType.name}" was not found in request services. Register it with builder.services.addScoped(${middlewareType.name}).`
+        );
+      }
+      await instance.invoke(ctx, next);
+    });
+    return this;
+  }
+
+  /**
+   * Adds the ForwardedHeadersMiddleware to process X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host headers.
+   * Modeled after ASP.NET Core UseForwardedHeaders().
+   */
+  public useForwardedHeaders(options?: ForwardedHeadersOptions): this {
+    this.use(createForwardedHeadersMiddleware(options));
+    return this;
+  }
+
+  /**
+   * Adds the CorsMiddleware to the application's request pipeline.
+   * Modeled after ASP.NET Core UseCors().
+   */
+  public useCors(policyNameOrPolicy?: string | CorsPolicy): this {
+    this.use(createCorsMiddleware(policyNameOrPolicy));
+    return this;
+  }
+
+  /**
+   * Adds the RateLimiterMiddleware to the application's request pipeline.
+   * Modeled after ASP.NET Core UseRateLimiter().
+   */
+  public useRateLimiter(): this {
+    this.use(createRateLimiterMiddleware());
     return this;
   }
 
@@ -348,7 +435,15 @@ export class WebApplication {
     // 5. Endpoint Handler (Execute terminal logic with final context.arguments)
     // 6. Response Execution (Execute HttpResult to response stream)
     const routingDelegate: RequestDelegate = async (ctx: HttpContext) => {
-      const routingResult = this.router.match(ctx.request.method, ctx.request.path);
+      const cached = ctx.items.get('__tsnx_routing_result') as
+        | { method: string; path: string; result: RoutingResult }
+        | undefined;
+      let routingResult: RoutingResult;
+      if (cached && cached.method === ctx.request.method && cached.path === ctx.request.path) {
+        routingResult = cached.result;
+      } else {
+        routingResult = this.router.match(ctx.request.method, ctx.request.path);
+      }
 
       if (routingResult.type === 'bad_request') {
         const result = Results.badRequest(routingResult.error);
@@ -416,7 +511,37 @@ export class WebApplication {
       }
     };
 
-    const finalPipeline = this.pipeline.build(routingDelegate);
+    const pipelineRunner = this.pipeline.build(routingDelegate);
+
+    const finalPipeline: RequestDelegate = async (ctx: HttpContext) => {
+      // Pre-match route to populate endpoint metadata for middleware (e.g. CORS, RateLimiting)
+      const preflightMethod =
+        ctx.request.method === 'OPTIONS'
+          ? (ctx.request.headers['access-control-request-method'] as string | undefined)?.toUpperCase()
+          : undefined;
+      const methodToMatch = preflightMethod || ctx.request.method;
+      const routingResult = this.router.match(methodToMatch, ctx.request.path);
+
+      if (routingResult.type === 'match') {
+        const metadata =
+          routingResult.match.compiledMetadata ??
+          routingResult.match.builder?.buildEffectiveMetadata();
+        if (metadata) {
+          ctx.items.set('__tsnx_endpoint_metadata', metadata);
+        }
+      }
+
+      // If this was not a preflight request, cache routingResult so routingDelegate can reuse it
+      if (!preflightMethod) {
+        ctx.items.set('__tsnx_routing_result', {
+          method: ctx.request.method,
+          path: ctx.request.path,
+          result: routingResult,
+        });
+      }
+
+      await pipelineRunner(ctx);
+    };
 
     // Register HttpServerHostedService in DI and bind root provider
     const loggerFactory = this.hostBuilder.logging;
@@ -521,7 +646,7 @@ export class WebApplication {
     await this.dispose();
   }
 
-  public static createBuilder(args: string[] = []): WebApplicationBuilder {
-    return new WebApplicationBuilder(args);
+  public static createBuilder(argsOrSettings: string[] | HostApplicationBuilderSettings = []): WebApplicationBuilder {
+    return new WebApplicationBuilder(argsOrSettings);
   }
 }

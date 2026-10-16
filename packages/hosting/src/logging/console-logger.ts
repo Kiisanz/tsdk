@@ -87,25 +87,57 @@ export class ConsoleLogger implements ILogger {
 
 export class LoggerFactory implements ILoggerFactory {
   private minLevel: LogLevel = LogLevel.Information;
+  private readonly categoryLevels = new Map<string, LogLevel>();
   private readonly loggers = new Map<string, ConsoleLogger>();
 
   constructor(initialMinLevel: LogLevel = LogLevel.Information) {
     this.minLevel = initialMinLevel;
   }
 
-  setMinimumLevel(level: LogLevel): void {
+  setMinimumLevel(level: LogLevel): this {
     this.minLevel = level;
+    return this;
   }
 
   getMinimumLevel(): LogLevel {
     return this.minLevel;
   }
 
+  setCategoryLevel(categoryPrefix: string, level: LogLevel): this {
+    this.categoryLevels.set(categoryPrefix.toLowerCase(), level);
+    return this;
+  }
+
+  getEffectiveLevel(categoryName: string): LogLevel {
+    const normalized = categoryName.toLowerCase();
+    let bestMatchKey = '';
+    let bestMatchLevel: LogLevel | undefined;
+
+    for (const [prefix, level] of this.categoryLevels) {
+      if (prefix === 'default') {
+        if (!bestMatchLevel) bestMatchLevel = level;
+        continue;
+      }
+      if (
+        normalized === prefix ||
+        normalized.startsWith(prefix + '.') ||
+        normalized.startsWith(prefix + ':')
+      ) {
+        if (prefix.length > bestMatchKey.length) {
+          bestMatchKey = prefix;
+          bestMatchLevel = level;
+        }
+      }
+    }
+
+    return bestMatchLevel !== undefined ? bestMatchLevel : this.minLevel;
+  }
+
   createLogger(categoryName: string): ILogger {
     if (!this.loggers.has(categoryName)) {
       this.loggers.set(
         categoryName,
-        new ConsoleLogger(categoryName, () => this.minLevel),
+        new ConsoleLogger(categoryName, () => this.getEffectiveLevel(categoryName)),
       );
     }
     return this.loggers.get(categoryName)!;

@@ -16,3 +16,8 @@ export {
   ExceptionHandlerPipeline,
   HandlerDescriptorOrType,
 } from './exception-handler-pipeline.js';
+
+export {
+  ProblemDetailsOptions,
+  PROBLEM_DETAILS_OPTIONS,
+} from './problem-details-options.js';

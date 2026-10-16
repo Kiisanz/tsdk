@@ -362,5 +362,17 @@ describe('WebApplication Integration', () => {
     assert.equal(body.title, 'MyTask Api');
     assert.equal(body.version, 'v1');
   });
+
+  test('WebApplication.createBuilder accepts HostApplicationBuilderSettings', () => {
+    const builder = WebApplication.createBuilder({
+      environmentName: 'Staging',
+      contentRootPath: '/custom/root',
+      args: ['--Server:Port=8080'],
+    });
+
+    assert.equal(builder.hostOptions.environmentName, 'Staging');
+    assert.equal(builder.hostOptions.contentRootPath, '/custom/root');
+    assert.equal(builder.configuration.get('Server:Port'), '8080');
+  });
 });
 

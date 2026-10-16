@@ -28,4 +28,5 @@ export interface ILogger {
 export interface ILoggerFactory {
   createLogger(categoryName: string): ILogger;
   setMinimumLevel(level: LogLevel): void;
+  setCategoryLevel?(categoryPrefix: string, level: LogLevel): void;
 }

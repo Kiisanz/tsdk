@@ -1,8 +1,11 @@
 import { EndpointFilterType } from '../filters/types.js';
 import { RouteHandlerBuilder } from '../filters/route-handler-builder.js';
 import { RouteHandler } from '../http/results.js';
-import { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
 import type { EndpointMetadataItem } from '../metadata/types.js';
+import type { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
+import { ENABLE_CORS_KEY, DISABLE_CORS_KEY } from '../cors/types.js';
+import { ENABLE_RATE_LIMITING_KEY, DISABLE_RATE_LIMITING_KEY } from '../rate-limiting/types.js';
+
 
 export function combinePaths(base: string, relative: string): string {
   const normBase = base.startsWith('/') ? base : `/${base}`;
@@ -101,6 +104,38 @@ export class RouteGroupBuilder {
 
   public getMetadataItems(): readonly EndpointMetadataItem[] {
     return this.metadataItems;
+  }
+
+  /**
+   * Requires CORS on all endpoints in this group, optionally specifying a named policy.
+   */
+  public requireCors(policyName?: string): this {
+    this.withMetadata(ENABLE_CORS_KEY, { policyName });
+    return this;
+  }
+
+  /**
+   * Disables CORS on all endpoints in this group.
+   */
+  public disableCors(): this {
+    this.withMetadata(DISABLE_CORS_KEY, { disabled: true });
+    return this;
+  }
+
+  /**
+   * Requires rate limiting on all endpoints in this group, optionally specifying a named policy.
+   */
+  public requireRateLimiting(policyName?: string): this {
+    this.withMetadata(ENABLE_RATE_LIMITING_KEY, { policyName });
+    return this;
+  }
+
+  /**
+   * Disables rate limiting on all endpoints in this group.
+   */
+  public disableRateLimiting(): this {
+    this.withMetadata(DISABLE_RATE_LIMITING_KEY, { disabled: true });
+    return this;
   }
 
   /**

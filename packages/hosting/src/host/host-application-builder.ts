@@ -88,6 +88,47 @@ export class HostApplicationBuilder {
     // 2. Pre-register core hosting services into DI
     this.services.addSingleton(Configuration, () => this.config);
     this.services.addSingleton(LoggerFactory, () => this.logging);
+
+    // 3. Auto-bind Logging:LogLevel from configuration
+    this.applyLoggingConfiguration();
+  }
+
+  public applyLoggingConfiguration(): void {
+    const rawValues = this.config.get<Record<string, any>>('Logging:LogLevel');
+    if (rawValues && typeof rawValues === 'object') {
+      for (const [key, value] of Object.entries(rawValues)) {
+        if (typeof value === 'string' || typeof value === 'number') {
+          const level = this.parseLogLevel(value);
+          if (level !== undefined) {
+            if (key.toLowerCase() === 'default') {
+              this.logging.setMinimumLevel(level);
+            } else {
+              this.logging.setCategoryLevel(key, level);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private parseLogLevel(value: string | number): LogLevel | undefined {
+    if (typeof value === 'number') {
+      return value in LogLevel ? value : undefined;
+    }
+    const normalized = value.toLowerCase();
+    switch (normalized) {
+      case 'trace': return LogLevel.Trace;
+      case 'debug': return LogLevel.Debug;
+      case 'information':
+      case 'info': return LogLevel.Information;
+      case 'warning':
+      case 'warn': return LogLevel.Warning;
+      case 'error': return LogLevel.Error;
+      case 'critical':
+      case 'crit': return LogLevel.Critical;
+      case 'none': return LogLevel.None;
+      default: return undefined;
+    }
   }
 
   setContentRoot(contentRootPath: string): this {

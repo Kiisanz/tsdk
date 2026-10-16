@@ -51,4 +51,33 @@ describe('@tsnx/hosting: Logging Abstraction', () => {
       console.log = originalLog;
     }
   });
+
+  it('filters log levels by hierarchical category prefix', () => {
+    const factory = new LoggerFactory(LogLevel.Warning); // Default Warning
+
+    // Configure prefix overrides
+    factory.setCategoryLevel('Microsoft.AspNetCore', LogLevel.Information);
+    factory.setCategoryLevel('Microsoft.AspNetCore.Hosting', LogLevel.Debug);
+    factory.setCategoryLevel('App.Security', LogLevel.Trace);
+
+    const defaultLogger = factory.createLogger('Other.Service');
+    const aspNetLogger = factory.createLogger('Microsoft.AspNetCore.Routing');
+    const hostingLogger = factory.createLogger('Microsoft.AspNetCore.Hosting');
+    const securityLogger = factory.createLogger('App.Security.Authentication');
+
+    // default: Warning
+    assert.equal(defaultLogger.isEnabled(LogLevel.Information), false);
+    assert.equal(defaultLogger.isEnabled(LogLevel.Warning), true);
+
+    // Microsoft.AspNetCore: Information
+    assert.equal(aspNetLogger.isEnabled(LogLevel.Debug), false);
+    assert.equal(aspNetLogger.isEnabled(LogLevel.Information), true);
+
+    // Microsoft.AspNetCore.Hosting: Debug (more specific prefix takes precedence)
+    assert.equal(hostingLogger.isEnabled(LogLevel.Debug), true);
+    assert.equal(hostingLogger.isEnabled(LogLevel.Trace), false);
+
+    // App.Security: Trace
+    assert.equal(securityLogger.isEnabled(LogLevel.Trace), true);
+  });
 });

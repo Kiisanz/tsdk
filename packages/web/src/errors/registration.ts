@@ -1,5 +1,6 @@
 import { ServiceCollection, IServiceProvider, Constructor } from '@tsnx/hosting';
 import { IExceptionHandler, EXCEPTION_HANDLER_TOKEN } from './types.js';
+import { ProblemDetailsOptions, PROBLEM_DETAILS_OPTIONS } from './problem-details-options.js';
 
 declare module '@tsnx/hosting' {
   interface ServiceCollection {
@@ -7,6 +8,7 @@ declare module '@tsnx/hosting' {
       handler: Constructor<T> | ((sp: IServiceProvider) => T),
       ...dependencies: any[]
     ): this;
+    addProblemDetails(configure?: (options: ProblemDetailsOptions) => void): this;
   }
 }
 
@@ -49,3 +51,16 @@ if (!(ServiceCollection.prototype as any).addExceptionHandler) {
     return this;
   };
 }
+
+if (!(ServiceCollection.prototype as any).addProblemDetails) {
+  (ServiceCollection.prototype as any).addProblemDetails = function (
+    this: ServiceCollection,
+    configure?: (options: ProblemDetailsOptions) => void
+  ): ServiceCollection {
+    const options: ProblemDetailsOptions = {};
+    if (configure) configure(options);
+    this.addSingleton(PROBLEM_DETAILS_OPTIONS, options);
+    return this;
+  };
+}
+
