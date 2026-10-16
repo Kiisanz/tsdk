@@ -41,7 +41,7 @@ export const docs: Doc[] = [
         "text": "TSNX is a Web API framework and project system for TypeScript and Node.js. It brings the builder pattern, dependency injection, middleware pipelines, and application hosting familiar from ASP.NET into a native TypeScript workflow.",
         "paragraphs": [
           "There are two pieces to learn: the runtime that handles HTTP requests and application services, and the CLI that manages native TypeScript projects. You can use @tsnx/web in an existing ESM application without adopting a multi-project workspace.",
-          "The RC HTTP programming model is explicit endpoint mapping. You compose functions, route groups, service registrations, and runtime schemas. Controller decorators and reflection-based action discovery are not part of the exported Web API surface."
+          "The TSNX HTTP programming model is explicit endpoint mapping. You compose functions, route groups, service registrations, and runtime schemas. Controller decorators and reflection-based action discovery are not part of the exported Web API surface."
         ]
       },
       {
@@ -92,7 +92,7 @@ export const docs: Doc[] = [
         "id": "familiar-by-design",
         "title": "Familiar by design",
         "text": "If you know ASP.NET, the architecture will feel familiar. TSNX uses JavaScript primitives where they fit: promises for asynchronous work, AbortSignal for cancellation, and explicit schema descriptors for runtime validation. TSNX adapts these concepts; it does not promise complete ASP.NET API parity.",
-        "note": "You are reading the v1.0.0-rc.1 documentation. This is a release candidate; verify package versions before adopting it in production."
+        "note": "You are reading the TSNX v1.0.2 documentation. TSNX is stable and production-ready."
       },
       {
         "id": "request-journey",
@@ -109,7 +109,7 @@ export const docs: Doc[] = [
       {
         "id": "choose-your-start",
         "title": "Choose your starting point",
-        "text": "Start with Quick start for a working API. Read Project structure when you need multiple projects, and use the RC feature map to check which contracts are implemented.",
+        "text": "Start with Quick start for a working API. Read Project structure when you need multiple projects, and use the Feature map to check which contracts are implemented.",
         "paragraphs": [
           "Examples use the Acme workspace, short PascalCase project names, and lowercase npm identities such as @acme/inventory. Folder structure is a convention you control; native tsconfig.json and package.json remain the source of truth."
         ]
@@ -121,7 +121,7 @@ export const docs: Doc[] = [
     ],
     "related": [
       "quick-start",
-      "rc-features"
+      "features"
     ]
   },
   {
@@ -140,8 +140,8 @@ export const docs: Doc[] = [
       {
         "id": "install-the-cli",
         "title": "Install the CLI",
-        "text": "Install the release candidate explicitly so your CLI matches this documentation.",
-        "code": "npm install -g @tsnx/cli@1.0.0-rc.1\ntsnx --version\ntsnx --help",
+        "text": "Install the stable TSNX CLI globally using npm or pnpm.",
+        "code": "npm install -g @tsnx/cli@1.0.2\ntsnx --version\ntsnx --help",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -157,7 +157,7 @@ export const docs: Doc[] = [
         "id": "existing-project",
         "title": "Add to an existing project",
         "text": "You can also use the HTTP and hosting packages directly in an existing TypeScript application. Compile and run your application with your existing ESM tooling.",
-        "code": "npm install @tsnx/web@1.0.0-rc.1 @tsnx/hosting@1.0.0-rc.1",
+        "code": "npm install @tsnx/web@1.0.2 @tsnx/hosting@1.0.2",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -361,7 +361,7 @@ export const docs: Doc[] = [
         "id": "package-metadata",
         "title": "Package configuration",
         "text": "Use package.json for the package name, dependencies, entry point, and TSNX metadata. Keep tsconfig.json focused on TypeScript compiler settings.",
-        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.0.0-rc.1\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
+        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.0.2\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
         "language": "json",
         "filename": "Entrypoints/Host/package.json",
         "note": "Library projects use src/index.ts with main ./dist/index.js and types ./dist/index.d.ts in package.json. TypeScript references control build order; package dependencies make imports available at runtime."
@@ -431,10 +431,10 @@ export const docs: Doc[] = [
       },
       {
         "id": "matching-rules",
-        "title": "Matching rules in the RC router",
+        "title": "Matching rules in the TSNX router",
         "text": "Routes consist of literal segments and named :parameter segments. Literal segments are compared case-sensitively and take precedence over parameter segments. Empty path segments are discarded, so trailing and repeated slashes are treated alike by matching.",
         "paragraphs": [
-          "Use /warehouses/:id and route({ id: Number }) when you need a numeric parameter. The RC parser does not implement ASP.NET-style constraints such as {id:int}, optional segment syntax, or wildcard route expansion.",
+          "Use /warehouses/:id and route({ id: Number }) when you need a numeric parameter. The router parser does not implement ASP.NET-style constraints such as {id:int}, optional segment syntax, or wildcard route expansion.",
           "Decoded parameters are strings until you bind them. Invalid percent encoding produces a bad-request routing result. Avoid registering equivalent patterns with different parameter names; exact method-plus-pattern duplicates are rejected, but semantic route equivalence is not a general ambiguity validator."
         ]
       },
@@ -445,7 +445,7 @@ export const docs: Doc[] = [
         "table": {
           "headers": [
             "HTTP situation",
-            "RC behavior"
+            "TSNX behavior"
           ],
           "rows": [
             [
@@ -731,7 +731,7 @@ export const docs: Doc[] = [
         "table": {
           "headers": [
             "Input",
-            "RC binding behavior"
+            "TSNX binding behavior"
           ],
           "rows": [
             [
@@ -897,7 +897,18 @@ export const docs: Doc[] = [
         "id": "ownership-and-order",
         "title": "Order and ownership",
         "text": "Filters run in FIFO onion order: outer group, inner group, endpoint, handler, then unwind. Calling next more than once throws. DI-owned filters are disposed by their owner; framework-created class or factory instances are disposed by the filter pipeline. A caller-supplied object instance remains caller-owned.",
-        "note": "Inline filters should declare both parameters, (invocation, next). The RC distinguishes factory functions from inline functions using function arity; a one-parameter function is treated as a factory."
+        "note": "Inline filters should declare both parameters, (invocation, next). TSNX distinguishes factory functions from inline functions using function arity; a one-parameter function is treated as a factory."
+      },
+      {
+        "id": "response-enveloping",
+        "title": "Standardizing responses and response enveloping",
+        "text": "Endpoint filters can intercept handler return values and transform them into a unified response envelope (e.g. { success: true, data: ..., meta: ... }).",
+        "paragraphs": [
+          "When applied to a Route Group (via app.mapGroup(\"/api\").addEndpointFilter(envelopeFilter)), every endpoint under that group automatically has its output wrapped without boilerplate in individual route handlers.",
+          "Filters inspect the result of next(ctx). If the handler returned a JsonResult, the filter reads result.data and result.statusCode, then returns a new JsonResult with the enveloped structure."
+        ],
+        "filename": "src/filters/envelope.filter.ts",
+        "code": "import { EndpointFilterFn, JsonResult, Results } from '@tsnx/web';\n\nexport const responseEnvelopeFilter: EndpointFilterFn = async (ctx, next) => {\n  const result = await next(ctx);\n\n  if (result instanceof JsonResult) {\n    return Results.json({\n      success: result.statusCode >= 200 && result.statusCode < 300,\n      data: result.data,\n      meta: { timestamp: new Date().toISOString() },\n    }, result.statusCode);\n  }\n\n  if (result !== undefined && !(result as any)?.executeAsync) {\n    return Results.json({\n      success: true,\n      data: result,\n      meta: { timestamp: new Date().toISOString() },\n    }, 200);\n  }\n\n  return result;\n};\n\n// Apply across an entire API route group:\n// const api = app.mapGroup('/api').addEndpointFilter(responseEnvelopeFilter);"
       }
     ],
     "sources": [
@@ -998,7 +1009,7 @@ export const docs: Doc[] = [
       {
         "id": "writing-and-negotiation",
         "title": "Serialization and content types",
-        "text": "The RC writes the result format you choose. It does not automatically negotiate a different representation from Accept or verify response data against produces() metadata. Use JSON-safe values; convert bigint or domain-specific numeric objects explicitly before serialization."
+        "text": "TSNX writes the result format you choose. It does not automatically negotiate a different representation from Accept or verify response data against produces() metadata. Use JSON-safe values; convert bigint or domain-specific numeric objects explicitly before serialization."
       }
     ],
     "sources": [
@@ -1056,6 +1067,17 @@ export const docs: Doc[] = [
         "paragraphs": [
           "Once a streaming response has started, the framework cannot replace its body with a JSON problem. Failures close or terminate the active response. Keep domain validation and configuration checks before starting a large stream."
         ]
+      },
+      {
+        "id": "builtin-exceptions-and-envelopes",
+        "title": "Built-in exceptions and custom error envelopes",
+        "text": "TSNX provides built-in exception classes such as BadHttpRequestException and RequestBindingException, and allows custom IExceptionHandler implementations to produce unified error envelopes.",
+        "paragraphs": [
+          "You can throw BadHttpRequestException(message, statusCode) anywhere in your endpoints or services (e.g., 404 Not Found, 413 Payload Too Large, or 422 Unprocessable Entity) and the pipeline will automatically map it to the corresponding HTTP status.",
+          "To unify error responses with your success envelope, implement IExceptionHandler and write a consistent JSON error structure via ctx.response.writeJson()."
+        ],
+        "filename": "src/errors/envelope-exception-handler.ts",
+        "code": "import { HttpContext, IExceptionHandler, BadHttpRequestException } from '@tsnx/web';\n\nexport class EnvelopedExceptionHandler implements IExceptionHandler {\n  async tryHandleAsync(ctx: HttpContext, error: unknown): Promise<boolean> {\n    const statusCode = error instanceof BadHttpRequestException ? error.statusCode : 500;\n    const message = error instanceof Error ? error.message : 'Internal Server Error';\n\n    await ctx.response.writeJson({\n      success: false,\n      data: null,\n      error: {\n        code: statusCode,\n        message,\n        type: error instanceof Error ? error.name : 'ServerError',\n      },\n      meta: { timestamp: new Date().toISOString() },\n    }, statusCode);\n\n    return true;\n  }\n}\n\n// Register in DI:\n// builder.services.addExceptionHandler<EnvelopedExceptionHandler>(EnvelopedExceptionHandler);"
       }
     ],
     "sources": [
@@ -1091,7 +1113,7 @@ export const docs: Doc[] = [
       {
         "id": "limit-boundaries",
         "title": "Understand what the limit covers",
-        "text": "readText(), readJson(), bindBody(), and getBodyStream() consume the bounded request stream. Direct access to IncomingMessage is unmetered. The RC does not provide automatic multipart parsing or decompression, so an upload parser or decompressor you introduce needs its own part, file, and decoded-size policy.",
+        "text": "readText(), readJson(), bindBody(), and getBodyStream() consume the bounded request stream. Direct access to IncomingMessage is unmetered. TSNX does not provide automatic multipart parsing or decompression, so an upload parser or decompressor you introduce needs its own part, file, and decoded-size policy.",
         "paragraphs": [
           "Exceeding the meter raises a 413 BadHttpRequestException when the failure reaches the pipeline before a response starts. If you pipe directly into a destination, ensure that destination is canceled and cleaned up on errors. The framework does not delete application-created upload files."
         ]
@@ -1123,7 +1145,7 @@ export const docs: Doc[] = [
         "id": "install-packages",
         "title": "Install the integrations",
         "text": "Add both integrations to the application. OpenAPI generates the document; Scalar serves the interactive reference.",
-        "code": "npm install @tsnx/openapi@1.0.0-rc.1 @tsnx/scalar@1.0.0-rc.1",
+        "code": "npm install @tsnx/openapi@1.0.2 @tsnx/scalar@1.0.2",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -1164,8 +1186,8 @@ export const docs: Doc[] = [
         "code": "import { WebApplication } from '@tsnx/web';\nimport { mapOpenApi } from '@tsnx/openapi';\nimport { mapScalarApiReference } from '@tsnx/scalar';\n\nconst app = WebApplication.createBuilder().build();\n\nmapOpenApi(app, '/spec/inventory.json');\n\nmapScalarApiReference(app, {\n  endpoint: '/reference',\n  openApiRoute: '/spec/inventory.json',\n  title: 'Acme Inventory API',\n  theme: 'default',\n});"
       },
       {
-        "id": "rc-documentation-boundaries",
-        "title": "RC generation boundaries",
+        "id": "openapi-generation-boundaries",
+        "title": "OpenAPI generation boundaries",
         "text": "The generator skips the default OpenAPI route and paths beginning with /scalar or /swagger. Custom documentation paths are not universally detected, so inspect a generated document if you change those routes.",
         "paragraphs": [
           "The current generator does not infer an authentication scheme from arbitrary middleware or security-related custom metadata. Verify the emitted OpenAPI document rather than assuming a policy is documented or enforced."
@@ -1245,7 +1267,7 @@ export const docs: Doc[] = [
       {
         "id": "fluent-registration",
         "title": "Fluent class registration",
-        "text": "The RC supports toClass(), toFactory(), and toInstance() after a lifetime registration. Constructor dependencies are supplied explicitly, in parameter order, using class or typed tokens. No decorator metadata is required.",
+        "text": "TSNX supports toClass(), toFactory(), and toInstance() after a lifetime registration. Constructor dependencies are supplied explicitly, in parameter order, using class or typed tokens. No decorator metadata is required.",
         "filename": "src/main.ts",
         "code": "import { WebApplication, Results, createToken } from '@tsnx/web';\n\ninterface WarehouseRepository { list(): string[]; }\n\nconst Repository = createToken<WarehouseRepository>('WarehouseRepository');\n\nclass ListWarehouses {\n  constructor(private readonly repository: WarehouseRepository) {}\n\n  execute() { return this.repository.list(); }\n}\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.services.addScoped(Repository).toFactory(() => ({\n  list: () => ['Central'],\n}));\nbuilder.services.addScoped(ListWarehouses).toClass(ListWarehouses, Repository);\n\nconst app = builder.build();\n\napp.mapGet('/warehouses', (ctx) => {\n  return Results.json(ctx.services.get(ListWarehouses).execute());\n});"
       },
@@ -1263,7 +1285,7 @@ export const docs: Doc[] = [
         "title": "Validate the declared dependency graph",
         "text": "Enable validateOnBuild for missing dependencies, circular references, and singleton-to-scoped captures in the analyzable class graph. Dependencies hidden inside arbitrary factory code can only be checked as resolution executes.",
         "filename": "src/main.ts",
-        "note": "WebApplication creates its underlying host on start()/run(), so host graph validation happens there. The RC rejects scoped resolution from the root provider even without validateScopes; do not rely on that option to permit root-scoped services.",
+        "note": "WebApplication creates its underlying host on start()/run(), so host graph validation happens there. TSNX rejects scoped resolution from the root provider even without validateScopes; do not rely on that option to permit root-scoped services.",
         "code": "import { WebApplication } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.configureServiceProvider({\n  validateOnBuild: true,\n  validateScopes: true,\n});\n\nconst app = builder.build();\n\nawait app.start();\n\nawait app.dispose();"
       },
       {
@@ -1356,7 +1378,7 @@ export const docs: Doc[] = [
         "title": "Content root and explicit reload",
         "text": "Settings are loaded relative to the content root, which defaults to process.cwd(). The builder accepts content-root settings and TSNX_CONTENTROOT, while the CLI run command launches the child process with the selected project directory as its working directory.",
         "paragraphs": [
-          "Configuration.reload() explicitly asks providers to load again. The RC does not install JSON file watchers or an options-monitor subscription. A fresh options snapshot only sees updated provider data after reload.",
+          "Configuration.reload() explicitly asks providers to load again. TSNX does not install JSON file watchers or an options-monitor subscription. A fresh options snapshot only sees updated provider data after reload.",
           "Server:Port, Server:Host, execution timeout, and shutdown drain timeout are read by WebApplication during host setup. Not every HttpServerOptions property is bound automatically; set maxBodySizeBytes and requestHeadersTimeoutMs with configureServer()."
         ]
       }
@@ -1425,8 +1447,19 @@ export const docs: Doc[] = [
         "title": "Conversion is not schema validation",
         "text": "The options binder maps keys case-insensitively and applies primitive conversion using defaults when possible. It does not provide a recursive runtime schema equivalent to request binding. Validate required settings, finite numbers, ranges, and formats explicitly.",
         "paragraphs": [
-          "For reload behavior, call Configuration.reload() on the configuration service and resolve a snapshot from a new scope. A singleton options value is already cached and is not replaced automatically. No IOptionsMonitor implementation is exported in this RC."
+          "For reload behavior, call Configuration.reload() on the configuration service and resolve a snapshot from a new scope. A singleton options value is already cached and is not replaced automatically. No IOptionsMonitor implementation is exported in TSNX."
         ]
+      },
+      {
+        "id": "options-validation-on-start",
+        "title": "Fail-fast startup validation with validateOnStart()",
+        "text": "Options validation can be enforced at application startup using .validateOnStart() to prevent the server from starting with invalid configuration.",
+        "paragraphs": [
+          "Call .validate(fn, failureMessage) to attach one or more predicate validators to an options type.",
+          "Chaining .validateOnStart() causes app.start() or app.run() to validate all registered options immediately, aborting startup with an OptionsValidationError if any check fails."
+        ],
+        "filename": "src/main.ts",
+        "code": "import { WebApplication, createToken } from '@tsnx/web';\n\ninterface DatabaseOptions {\n  connectionString: string;\n  maxConnections: number;\n}\n\nconst DATABASE_OPTIONS = createToken<DatabaseOptions>('DatabaseOptions');\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.services\n  .configure(DATABASE_OPTIONS)\n  .bindConfiguration('Database')\n  .validate((opts) => opts.connectionString.startsWith('postgres://'), 'Must be a PostgreSQL URL')\n  .validate((opts) => opts.maxConnections > 0 && opts.maxConnections <= 100, 'MaxConnections must be 1-100')\n  .validateOnStart(); // Fail-fast before server opens ports\n\nconst app = builder.build();\nawait app.run();"
       }
     ],
     "sources": [
@@ -1547,6 +1580,17 @@ export const docs: Doc[] = [
         "id": "lifetime-signals",
         "title": "Observe host lifetime",
         "text": "HostApplicationLifetime exposes applicationStarted, applicationStopping, and applicationStopped as AbortSignals that become aborted at each milestone. stopApplication() requests coordinated shutdown. Host shutdown defaults to a 30-second budget; configure HostOptions for your workload."
+      },
+      {
+        "id": "hosted-service-interface-and-orms",
+        "title": "IHostedService interface and ORM connection disposal",
+        "text": "TSNX standardizes service contracts with the I prefix (IHostedService, IServiceProvider, IConfiguration) and coordinates graceful resource disposal for databases and ORMs.",
+        "paragraphs": [
+          "For database connections (such as MikroORM or Prisma), register a hosted service to manage their lifecycle and guarantee clean disconnection during SIGINT / SIGTERM shutdown before process exit.",
+          "Both IHostedService and HostedService are exported as type aliases for seamless backward compatibility."
+        ],
+        "filename": "src/services/database.service.ts",
+        "code": "import { type IHostedService, WebApplication } from '@tsnx/web';\nimport { MikroORM } from '@mikro-orm/core';\n\nexport class DatabaseLifecycleService implements IHostedService {\n  constructor(private readonly orm: MikroORM) {}\n\n  async start(): Promise<void> {\n    await this.orm.connect();\n  }\n\n  async stop(): Promise<void> {\n    // Gracefully close pool and drain connections\n    await this.orm.close(true);\n  }\n}\n\n// Register in builder:\n// builder.services.addSingleton(MikroORM, () => orm);\n// builder.services.addHostedService().toClass(DatabaseLifecycleService);"
       }
     ],
     "sources": [
@@ -1564,7 +1608,7 @@ export const docs: Doc[] = [
     "title": "Server configuration",
     "group": "Run & deploy",
     "source": "packages/web/src/server/http-server.ts",
-    "description": "Configure HTTP limits, execution deadlines, and shutdown budgets from the RC server implementation.",
+    "description": "Configure HTTP limits, execution deadlines, and shutdown budgets from the TSNX server implementation.",
     "sections": [
       {
         "id": "server-options",
@@ -1622,7 +1666,7 @@ export const docs: Doc[] = [
         "title": "Which settings are bound automatically?",
         "text": "WebApplication reads Server:Port, Server:Host, Server:RequestExecutionTimeoutMs (or the older RequestTimeoutMs alias), and Server:ShutdownDrainTimeoutMs when the corresponding explicit setting is absent. Explicit configureServer values take precedence.",
         "paragraphs": [
-          "maxBodySizeBytes and requestHeadersTimeoutMs are not read from that section by the RC setup code. Set them directly through configureServer. Node headersTimeout is configured, but separate keepAliveTimeout, maxHeaderSize, and socket-level options are not exposed by HttpServerOptions."
+          "maxBodySizeBytes and requestHeadersTimeoutMs are not read from that section by the TSNX setup code. Set them directly through configureServer. Node headersTimeout is configured, but separate keepAliveTimeout, maxHeaderSize, and socket-level options are not exposed by HttpServerOptions."
         ]
       },
       {
@@ -1761,6 +1805,30 @@ export const docs: Doc[] = [
         "paragraphs": [
           "Legacy .tsproj and .tswork readers remain in the source for compatibility. New scaffolds and the Acme guide use native files. Do not copy an older legacy sample as the current workspace template."
         ]
+      },
+      {
+        "id": "tooling-flags",
+        "title": "Scaffolding linters and formatters",
+        "text": "tsnx workspace init supports pluggable tooling flags to configure ESLint, Prettier, or Biome automatically.",
+        "paragraphs": [
+          "Without flags, TSNX configures ESLint + Prettier by default, generating .editorconfig, .gitignore, .prettierrc, .prettierignore, and eslint.config.mjs.",
+          "Use --lint <eslint|biome> or --no-lint to select or disable the linter. Use --format <prettier|biome> or --no-format to select or disable the formatter."
+        ],
+        "language": "bash",
+        "filename": "bash",
+        "code": "# Default: ESLint + Prettier\ntsnx workspace init MyWorkspace\n\n# Fast Biome setup (linting + formatting)\ntsnx workspace init MyWorkspace --lint biome --format biome\n\n# Minimal setup without linters or formatters\ntsnx workspace init MyWorkspace --no-lint --no-format"
+      },
+      {
+        "id": "migrating-existing-projects",
+        "title": "Adopting TSNX in an existing project",
+        "text": "You can adopt TSNX into an existing repository without starting from scratch.",
+        "paragraphs": [
+          "Run tsnx workspace init in the root of your existing project to generate the solution tsconfig.json and .tswork build graph.",
+          "Register existing sub-projects into the solution using tsnx workspace add <path>. TSNX automatically configures project references, workspace package globs, and dependency tracking."
+        ],
+        "language": "bash",
+        "filename": "bash",
+        "code": "# 1. Initialize workspace in existing directory\ntsnx workspace init MyWorkspace --packages \"apps/*,packages/*\"\n\n# 2. Add existing projects to the solution\ntsnx workspace add apps/existing-api\ntsnx workspace add packages/shared-lib\n\n# 3. Connect project references\ntsnx ref add apps/existing-api packages/shared-lib\n\n# 4. Build solution graph\ntsnx build"
       }
     ],
     "sources": [
@@ -1945,7 +2013,7 @@ export const docs: Doc[] = [
         "id": "test-command",
         "title": "Test execution",
         "text": "tsnx test builds first, recursively finds *.test.js, *.spec.js, *.test.mjs, and *.spec.mjs under each target project dist directory, and launches the Node test runner. A failing test produces a nonzero result.",
-        "note": "No discovered test files produces a warning and exit code 0 in this RC. A successful command with that warning is not evidence that tests ran."
+        "note": "No discovered test files produces a warning and exit code 0. A successful command with that warning is not evidence that tests ran."
       }
     ],
     "sources": [
@@ -2013,16 +2081,16 @@ export const docs: Doc[] = [
     ]
   },
   {
-    "slug": "rc-features",
-    "title": "RC feature map",
+    "slug": "features",
+    "title": "v1.0 Feature Map & Release Overview",
     "group": "Reference",
-    "description": "What this release candidate implements, how it is configured, and where its boundaries are.",
+    "description": "Comprehensive overview of features, runtime contracts, and platform capabilities in TSNX v1.0.",
     "source": "packages/web/src/index.ts",
     "sections": [
       {
         "id": "documentation-scope",
         "title": "Scope of these guides",
-        "text": "These guides describe the current repository source tree, whose framework package manifests declare 1.0.0-rc.1. Examples are checked against its exported TypeScript declarations and selected runtime scenarios. This is not a verification of the contents of a separately installed registry tarball.",
+        "text": "These guides describe the stable TSNX framework repository and package ecosystem (v1.0.2). Examples are checked against its exported TypeScript declarations and verified with end-to-end regression suites.",
         "paragraphs": [
           "Implementation links and regression-test references accompany the guides. Source behavior takes precedence over older README examples, architecture proposals, and legacy samples. Where a feature is application-owned, the guide says so."
         ]
@@ -2030,7 +2098,7 @@ export const docs: Doc[] = [
       {
         "id": "http-features",
         "title": "HTTP and endpoint features",
-        "text": "The RC uses the native Node HTTP server and an explicit endpoint registry.",
+        "text": "TSNX uses the native Node HTTP server and an explicit endpoint registry.",
         "table": {
           "headers": [
             "Feature",
@@ -2174,7 +2242,7 @@ export const docs: Doc[] = [
         "table": {
           "headers": [
             "Setting / behavior",
-            "RC default or limit"
+            "Default or limit"
           ],
           "rows": [
             [
@@ -2215,7 +2283,7 @@ export const docs: Doc[] = [
       {
         "id": "find-details",
         "title": "Read the focused guides",
-        "text": "Use the API guides for exact call signatures and examples. Use CLI and Workspace workflow for commands you can run against the Acme layout. The source links below are the starting point for checking behavior as the RC evolves."
+        "text": "Use the API guides for exact call signatures and examples. Use CLI and Workspace workflow for commands you can run against the Acme layout. The source links below are the starting point for checking behavior as TSNX evolves."
       }
     ],
     "sources": [
@@ -2262,7 +2330,7 @@ export const docs: Doc[] = [
       {
         "id": "explicit-composition",
         "title": "Explicit endpoint composition",
-        "text": "The RC public HTTP surface provides mapGet/mapPost/mapPut/mapDelete/mapPatch, groups, descriptors, and endpoint filters. It does not export controller attributes, automatic assembly scanning, model attributes, or an authorization policy builder.",
+        "text": "The TSNX v1.0 public HTTP surface provides mapGet/mapPost/mapPut/mapDelete/mapPatch, groups, descriptors, and endpoint filters. It does not export controller attributes, automatic assembly scanning, model attributes, or an authorization policy builder.",
         "paragraphs": [
           "Use external authentication libraries and middleware for identity verification, then enforce application permissions explicitly. A withMetadata declaration or OpenAPI description is not an authorization check."
         ]
@@ -2272,7 +2340,7 @@ export const docs: Doc[] = [
         "title": "Defaults are not an ASP.NET compatibility contract",
         "text": "Execution timeout is disabled by default. Routing compares literal path segments case-sensitively and normalizes empty slash segments. Unknown JSON body fields are omitted rather than rejected, and business constraints require explicit validation.",
         "paragraphs": [
-          "Cancellation uses AbortSignal, disposal uses JavaScript resource hooks or dispose(), and host lifetime milestones use signals. These concepts are familiar, but their exact ordering and fallback status codes are defined by this RC implementation."
+          "Cancellation uses AbortSignal, disposal uses JavaScript resource hooks or dispose(), and host lifetime milestones use signals. These concepts are familiar, but their exact ordering and fallback status codes are defined by the TSNX implementation."
         ]
       }
     ],
@@ -2282,7 +2350,7 @@ export const docs: Doc[] = [
       "packages/hosting/src/di/service-provider.ts"
     ],
     "related": [
-      "rc-features",
+      "features",
       "lifecycle"
     ]
   },
@@ -2290,7 +2358,7 @@ export const docs: Doc[] = [
     "slug": "troubleshooting",
     "title": "Troubleshooting",
     "group": "Reference",
-    "description": "Resolve common RC setup and runtime issues using the actual error contracts.",
+    "description": "Resolve common setup and runtime issues using the actual error contracts.",
     "source": "apps/cli/src/discovery.ts",
     "sections": [
       {
@@ -2356,7 +2424,7 @@ export const docs: Doc[] = [
         "title": "Handler ran but the response is wrong",
         "text": "Return Results.json(data), not a plain object. If you write through ctx.response yourself, await that operation and do not return a second result. InvalidResponseStateException indicates an overlapping or invalid write.",
         "paragraphs": [
-          "Timeouts use 503 in this RC, and the handler can still be running if it ignored cancellation. onCompleted reports response completion, not the completion of every downstream operation."
+          "Timeouts use 503 in TSNX, and the handler can still be running if it ignored cancellation. onCompleted reports response completion, not the completion of every downstream operation."
         ]
       },
       {
@@ -2373,7 +2441,7 @@ export const docs: Doc[] = [
     ],
     "related": [
       "workspace",
-      "rc-features"
+      "features"
     ]
   }
 ];
