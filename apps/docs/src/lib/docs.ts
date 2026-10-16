@@ -680,6 +680,16 @@ export const docs: Doc[] = [
         "paragraphs": [
           "Middleware runs before endpoint selection. Endpoint filters run after declarative binding and have access to bound arguments. Choose middleware for broad HTTP concerns and filters for endpoint-specific behavior."
         ]
+      },
+      {
+        "id": "middleware-di-pattern",
+        "title": "Resolve scoped dependencies in middleware",
+        "text": "Middleware registered via app.use() executes per request. While declarative IMiddleware class auto-binding is coming in v1.1, in TSNX 1.0.2 you can cleanly resolve scoped services via ctx.requestServices or encapsulate logic in a middleware class.",
+        "filename": "src/main.ts",
+        "paragraphs": [
+          "Register your custom middleware class in the DI container with addScoped or addTransient. Inside app.use(), resolve the class instance from ctx.requestServices and delegate execution to it."
+        ],
+        "code": "import { WebApplication, type HttpContext } from '@tsnx/web';\n\nexport class CorsMiddleware {\n  async invoke(ctx: HttpContext, next: () => Promise<void>): Promise<void> {\n    ctx.response.setHeader('Access-Control-Allow-Origin', '*');\n    ctx.response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');\n    if (ctx.request.method === 'OPTIONS') {\n      ctx.response.statusCode = 204;\n      return;\n    }\n    await next();\n  }\n}\n\nconst builder = WebApplication.createBuilder();\nbuilder.services.addScoped(CorsMiddleware);\n\nconst app = builder.build();\n\n// Connect class-based middleware with DI request scope\napp.use(async (ctx, next) => {\n  const middleware = ctx.requestServices.get(CorsMiddleware);\n  await middleware.invoke(ctx, next);\n});"
       }
     ],
     "sources": [
@@ -1381,6 +1391,17 @@ export const docs: Doc[] = [
           "Configuration.reload() explicitly asks providers to load again. TSNX does not install JSON file watchers or an options-monitor subscription. A fresh options snapshot only sees updated provider data after reload.",
           "Server:Port, Server:Host, execution timeout, and shutdown drain timeout are read by WebApplication during host setup. Not every HttpServerOptions property is bound automatically; set maxBodySizeBytes and requestHeadersTimeoutMs with configureServer()."
         ]
+      },
+      {
+        "id": "independent-content-root",
+        "title": "Independent content root for migrations, workers, and tests",
+        "text": "By default, JSON settings are resolved relative to process.cwd(). To keep configuration paths independent of the command execution directory (for example, when running database migrations, workers, or integration tests from a monorepo root), pass --contentRoot to createBuilder.",
+        "paragraphs": [
+          "In TSNX 1.0.2, passing ['--contentRoot', serverRoot, ...args] directs the host to load appsettings.json and environment configurations from serverRoot.",
+          "In v1.1.0, this option will also be supported via programmatic builder options { contentRootPath: serverRoot } across HTTP, hosting, and test builders."
+        ],
+        "filename": "src/builder.ts",
+        "code": "import { fileURLToPath } from 'node:url';\nimport { WebApplication } from '@tsnx/web';\n\n// Compute absolute root of the project\nexport const serverRoot = fileURLToPath(new URL('../', import.meta.url));\n\nexport function createServerBuilder(args: string[] = []) {\n  // Keep JSON configuration paths independent of the command's working directory\n  return WebApplication.createBuilder(['--contentRoot', serverRoot, ...args]);\n}"
       }
     ],
     "sources": [
@@ -1460,6 +1481,18 @@ export const docs: Doc[] = [
         ],
         "filename": "src/main.ts",
         "code": "import { WebApplication, createToken } from '@tsnx/web';\n\ninterface DatabaseOptions {\n  connectionString: string;\n  maxConnections: number;\n}\n\nconst DATABASE_OPTIONS = createToken<DatabaseOptions>('DatabaseOptions');\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.services\n  .configure(DATABASE_OPTIONS)\n  .bindConfiguration('Database')\n  .validate((opts) => opts.connectionString.startsWith('postgres://'), 'Must be a PostgreSQL URL')\n  .validate((opts) => opts.maxConnections > 0 && opts.maxConnections <= 100, 'MaxConnections must be 1-100')\n  .validateOnStart(); // Fail-fast before server opens ports\n\nconst app = builder.build();\nawait app.run();"
+      },
+      {
+        "id": "connection-strings-and-arrays",
+        "title": "Connection strings, array configurations, and property mapping",
+        "text": "Configuration keys use colons (:) in JSON and double underscores (__) in environment variables. For arrays (such as Cors:AllowedOrigins), provide a JSON array string or indexed environment variables.",
+        "paragraphs": [
+          "When mapping connection strings (e.g. ConnectionStrings:Default), bind the section to an options class or read it via configuration.get<string>('ConnectionStrings:Default').",
+          "Environment variables like Cors__AllowedOrigins__0=http://localhost:3000 and Cors__AllowedOrigins__1=https://app.com are automatically parsed as array elements.",
+          "Combine with .validateOnStart() to ensure database credentials and CORS origins are valid before the application listens on HTTP ports."
+        ],
+        "filename": "src/main.ts",
+        "code": "import { WebApplication, createToken } from '@tsnx/web';\n\nexport class CorsOptions {\n  allowedOrigins: string[] = [];\n  allowedMethods: string[] = ['GET', 'POST', 'PUT', 'DELETE'];\n}\n\nconst CORS_OPTIONS = createToken<CorsOptions>('CorsOptions');\n\nconst builder = WebApplication.createBuilder();\n\n// Binds Cors section (e.g. Cors:AllowedOrigins in JSON or Cors__AllowedOrigins__0 in env)\nbuilder.services\n  .configure(CORS_OPTIONS)\n  .bindConfiguration('Cors')\n  .validate((opts) => opts.allowedOrigins.length > 0, 'Cors:AllowedOrigins is required')\n  .validateOnStart();"
       }
     ],
     "sources": [
@@ -1529,6 +1562,16 @@ export const docs: Doc[] = [
         "paragraphs": [
           "Set a clear category per subsystem instead of creating unbounded categories from request input. A single LoggerFactory retains a logger for every category it creates."
         ]
+      },
+      {
+        "id": "startup-error-logging",
+        "title": "Startup error logging and entrypoint pattern",
+        "text": "When an unhandled exception occurs during host startup (such as a database connection error or options validation failure), AppHost logs the critical error and rethrows it to signal startup failure.",
+        "paragraphs": [
+          "To avoid duplicate uncaught exception dumps from the Node.js runtime, use a canonical try/catch entrypoint in main.ts. The application catches the rethrown error and terminates cleanly with an exit code."
+        ],
+        "filename": "src/main.ts",
+        "code": "import process from 'node:process';\nimport { createApp } from './app.js';\n\ntry {\n  const app = createApp(process.argv.slice(2));\n  await app.run();\n} catch (err: unknown) {\n  // Error was already logged by AppHost during failed startup.\n  // Terminate cleanly with a non-zero exit code without duplicate runtime stack dumps.\n  process.exit(1);\n}"
       }
     ],
     "sources": [
@@ -1583,14 +1626,15 @@ export const docs: Doc[] = [
       },
       {
         "id": "hosted-service-interface-and-orms",
-        "title": "IHostedService interface and ORM connection disposal",
-        "text": "TSNX standardizes service contracts with the I prefix (IHostedService, IServiceProvider, IConfiguration) and coordinates graceful resource disposal for databases and ORMs.",
+        "title": "Async resources, ORM initialization, and clean failure shutdown",
+        "text": "TSNX standardizes service contracts with the I prefix (IHostedService, IServiceProvider, IConfiguration) and coordinates graceful lifecycle management for asynchronous database and ORM connections.",
         "paragraphs": [
-          "For database connections (such as MikroORM or Prisma), register a hosted service to manage their lifecycle and guarantee clean disconnection during SIGINT / SIGTERM shutdown before process exit.",
-          "Both IHostedService and HostedService are exported as type aliases for seamless backward compatibility."
+          "Because DI container constructors and factories are synchronous, asynchronous initialization (such as MikroORM.init() or PrismaClient.$connect()) belongs inside IHostedService.start().",
+          "If start() fails or throws an exception, the host cancels boot, gracefully shuts down any previously started services in reverse order, and prevents dangling sockets or pool leaks.",
+          "Expose the resulting instance to request handlers via a scoped token (for example, em.fork() for request-scoped EntityManagers)."
         ],
         "filename": "src/services/database.service.ts",
-        "code": "import { type IHostedService, WebApplication } from '@tsnx/web';\nimport { MikroORM } from '@mikro-orm/core';\n\nexport class DatabaseLifecycleService implements IHostedService {\n  constructor(private readonly orm: MikroORM) {}\n\n  async start(): Promise<void> {\n    await this.orm.connect();\n  }\n\n  async stop(): Promise<void> {\n    // Gracefully close pool and drain connections\n    await this.orm.close(true);\n  }\n}\n\n// Register in builder:\n// builder.services.addSingleton(MikroORM, () => orm);\n// builder.services.addHostedService().toClass(DatabaseLifecycleService);"
+        "code": "import { type IHostedService, createToken, WebApplication } from '@tsnx/web';\nimport { MikroORM, type EntityManager } from '@mikro-orm/postgresql';\n\nexport const ORM_TOKEN = createToken<MikroORM>('MikroORM');\nexport const EM_TOKEN = createToken<EntityManager>('EntityManager');\n\nexport class DatabaseService implements IHostedService {\n  private orm?: MikroORM;\n\n  constructor(private readonly config: any) {}\n\n  async start(): Promise<void> {\n    // 1. Asynchronously connect and initialize during host startup\n    this.orm = await MikroORM.init(this.config);\n  }\n\n  async stop(): Promise<void> {\n    // 2. Coordinated teardown on SIGINT/SIGTERM or when startup fails\n    if (this.orm) {\n      await this.orm.close(true);\n    }\n  }\n\n  get instance(): MikroORM {\n    if (!this.orm) throw new Error('Database service has not been initialized.');\n    return this.orm;\n  }\n}\n\n// In builder:\n// builder.services.addSingleton(DatabaseService);\n// builder.services.addHostedService().toFactory((sp) => sp.get(DatabaseService));\n// builder.services.addSingleton(ORM_TOKEN, (sp) => sp.get(DatabaseService).instance);\n// builder.services.addScoped(EM_TOKEN, (sp) => sp.get(ORM_TOKEN).em.fork());"
       }
     ],
     "sources": [
