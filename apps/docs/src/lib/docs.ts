@@ -1709,6 +1709,86 @@ export const docs: Doc[] = [
     ]
   },
   {
+    "slug": "data-and-orm",
+    "title": "Data & ORM (EF Core Style)",
+    "group": "Application services",
+    "description": "Enterprise database access inspired by Entity Framework Core: DbContext, Unit of Work, Scoped identity maps, IDbContextFactory, and optimistic concurrency.",
+    "source": "https://github.com/tsnxjs/data",
+    "sections": [
+      {
+        "id": "overview",
+        "title": "ASP.NET Core & EF Core architecture in TypeScript",
+        "text": "The @tsnx/data ecosystem translates Entity Framework Core's proven architectural patterns into native TypeScript with zero runtime overhead, combining Scoped Unit of Work semantics with first-class MikroORM integration.",
+        "paragraphs": [
+          "@tsnx/data provides provider-agnostic abstractions (DbContext, IUnitOfWork, IDbContextFactory, DbConcurrencyException, IDatabaseFacade), while @tsnx/mikro-orm acts as the official adapter.",
+          "Unlike raw ORM singletons that risk cross-request state pollution, TSNX automatically binds an isolated EntityManager fork to each HTTP request scope. When the request finishes, the scope and its identity map are cleanly disposed."
+        ]
+      },
+      {
+        "id": "installation-and-setup",
+        "title": "Installation and registration",
+        "text": "Install @tsnx/data and @tsnx/mikro-orm alongside your chosen database driver (e.g. SQLite, PostgreSQL, MySQL). Register the provider using addMikroOrm() on your builder.",
+        "filename": "src/main.ts",
+        "code": "import { WebApplication } from '@tsnx/web';\nimport { addMikroOrm, MikroDbContext } from '@tsnx/mikro-orm';\nimport { defineConfig } from '@mikro-orm/sqlite';\nimport { User } from './entities/user.entity.js';\n\nconst builder = WebApplication.createBuilder();\n\n// 1. Configure MikroORM and DbContext\naddMikroOrm(builder.services, defineConfig({\n  dbName: 'app.db',\n  entities: [User],\n}), {\n  autoMigrate: true,\n  ensureCreated: true,\n  enableSensitiveDataLogging: builder.environment.isDevelopment(),\n});\n\nconst app = builder.build();\n\napp.mapGet('/users', async (db: MikroDbContext) => {\n  return await db.set(User).findMany({}, { asNoTracking: true });\n});\n\nawait app.run();"
+      },
+      {
+        "id": "scoped-dbcontext-and-unit-of-work",
+        "title": "Scoped DbContext and saveChanges",
+        "text": "Inject MikroDbContext directly into endpoint handlers or scoped services. Operations operate within the request's isolated Unit of Work, and saveChanges() persists all staged changes in a single database roundtrip.",
+        "filename": "src/endpoints/users.ts",
+        "code": "import { MikroDbContext } from '@tsnx/mikro-orm';\nimport { User } from '../entities/user.entity.js';\n\nexport async function createUser(db: MikroDbContext, body: { name: string; email: string }) {\n  const users = db.set(User);\n  const user = new User(body.name, body.email);\n  \n  users.add(user);\n  const affectedCount = await db.saveChanges();\n  \n  return { success: true, user, affected: affectedCount };\n}"
+      },
+      {
+        "id": "as-no-tracking",
+        "title": "Read-only queries with asNoTracking",
+        "text": "For read-heavy endpoints, dashboards, and reports, passing asNoTracking: true bypasses the managed identity map, reducing garbage collection overhead and boosting throughput.",
+        "filename": "src/endpoints/reports.ts",
+        "code": "app.mapGet('/reports/users', async (db: MikroDbContext) => {\n  // Fetches entities without registering them in the identity map\n  return await db.set(User).findMany(\n    { isActive: true },\n    { asNoTracking: true, take: 50 }\n  );\n});"
+      },
+      {
+        "id": "dbcontext-factory",
+        "title": "Create DbContext outside HTTP scopes (IDbContextFactory)",
+        "text": "Background workers, message consumers, scheduled jobs, and CLI scripts operate outside an active HTTP request scope. Inject IDbContextFactory to instantiate dedicated, isolated sessions on demand.",
+        "filename": "src/workers/cleanup.worker.ts",
+        "code": "import { BackgroundService } from '@tsnx/hosting';\nimport { DB_CONTEXT_FACTORY, type IDbContextFactory } from '@tsnx/data';\nimport { MikroDbContext } from '@tsnx/mikro-orm';\nimport { User } from '../entities/user.entity.js';\n\nexport class CleanupWorker extends BackgroundService {\n  constructor(private readonly factory: IDbContextFactory<MikroDbContext>) {\n    super();\n  }\n\n  async execute(signal: AbortSignal): Promise<void> {\n    while (!signal.aborted) {\n      // Create an isolated DbContext session for this cycle\n      const db = this.factory.createDbContext();\n      try {\n        const stale = await db.set(User).findMany({ isDeleted: true });\n        db.set(User).removeMany(stale);\n        await db.saveChanges();\n      } finally {\n        db.dispose();\n      }\n      await new Promise((r) => setTimeout(r, 60000));\n    }\n  }\n}"
+      },
+      {
+        "id": "optimistic-concurrency-tokens",
+        "title": "Optimistic concurrency & HTTP 409 Conflict mapping",
+        "text": "Prevent lost updates in concurrent environments using version columns. When a conflict is detected during saveChanges(), TSNX catches the ORM lock mismatch and throws DbConcurrencyException, automatically responding with HTTP 409 Conflict.",
+        "paragraphs": [
+          "In high-concurrency systems (like inventory management or ticket bookings), two users reading the same stock value will both try to write back their updates.",
+          "By decorating a version property in your entity, the first update increments the version from 1 to 2. The second update attempts to save expecting version 1, triggering an optimistic concurrency violation.",
+          "TSNX normalizes this into standard RFC 7807 ProblemDetails with HTTP status 409, allowing clients to cleanly retry or reload stale data."
+        ],
+        "filename": "src/entities/inventory.entity.js",
+        "code": "import { Entity, PrimaryKey, Property } from '@mikro-orm/core';\n\n@Entity()\nexport class InventoryItem {\n  @PrimaryKey()\n  id!: number;\n\n  @Property()\n  stock!: number;\n\n  @Property({ version: true })\n  version!: number;\n}\n\n// Route handler:\napp.mapPatch('/inventory/:id', async (db: MikroDbContext, id: number, body: { stock: number }) => {\n  const item = await db.set(InventoryItem).findById(id);\n  if (!item) return Results.notFound();\n  \n  item.stock = body.stock;\n  \n  // If another request updated this item concurrently, saveChanges throws\n  // DbConcurrencyException which TSNX formats as HTTP 409 Conflict ProblemDetails.\n  await db.saveChanges();\n  return item;\n});"
+      },
+      {
+        "id": "transactions-and-rollback",
+        "title": "Explicit and managed transactions",
+        "text": "Coordinate multi-entity operations with executeInTransaction(). The transaction automatically commits on successful completion and rolls back if an exception occurs.",
+        "filename": "src/endpoints/orders.ts",
+        "code": "app.mapPost('/checkout', async (db: MikroDbContext, body: CheckoutRequest) => {\n  return await db.executeInTransaction(async (tx) => {\n    // All operations inside the callback participate in the active transaction\n    const order = new Order(body);\n    db.set(Order).add(order);\n    \n    const wallet = await db.set(Wallet).findById(body.userId);\n    wallet.deduct(order.total);\n    \n    await db.saveChanges();\n    return order;\n  });\n});"
+      },
+      {
+        "id": "database-facade-and-migrations",
+        "title": "Database facade & startup migrations",
+        "text": "Access schema operations and connectivity checks via db.database. You can run migrations programmatically during application startup using a temporary scope, mirroring ASP.NET Core conventions.",
+        "filename": "src/main.ts",
+        "code": "const app = builder.build();\n\n// Run pending migrations before accepting incoming traffic\nawait using (const scope = app.services.createScope()) {\n  const db = scope.get(MikroDbContext);\n  const ready = await db.database.canConnect();\n  if (ready) {\n    await db.database.migrate();\n  }\n}\n\nawait app.run();"
+      }
+    ],
+    "sources": [
+      "https://github.com/tsnxjs/data"
+    ],
+    "related": [
+      "dependency-injection",
+      "hosted-services",
+      "exception-handling"
+    ]
+  },
+  {
     "slug": "configuration",
     "title": "Server configuration",
     "group": "Run & deploy",
