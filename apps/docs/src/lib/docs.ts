@@ -23,7 +23,7 @@ export type Doc = {
 };
 
 export const repository = "https://github.com/tsnxjs/tsnx";
-export const version = "1.0.0-rc.1";
+export const version = "1.0.0";
 
 export const helloExample = "import { WebApplication, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\nconst app = builder.build();\n\napp.mapGet('/hello', () => {\n  return Results.json({ message: 'Hello, TSNX!' });\n});\n\nawait app.run();";
 
@@ -1708,7 +1708,8 @@ export const docs: Doc[] = [
         "language": "bash",
         "filename": "Terminal",
         "paragraphs": [
-          "The initializer writes a private root package.json, a solution-style tsconfig.json, and pnpm-workspace.yaml when needed. Package globs default to depth 3 (*, */*, */*/*) and automatically expand as deeper projects are created. You can also specify custom depth or globs with --depth <n> or --packages <globs>."
+          "The initializer writes a private root package.json, a solution-style tsconfig.json, and pnpm-workspace.yaml when needed. Package globs default to depth 3 (*, */*, */*/*) and automatically expand as deeper projects are created. You can also specify custom depth or globs with --depth <n> or --packages <globs>.",
+          "It also sets up standard developer tooling: .gitignore, .editorconfig, linter (ESLint or Biome), and formatter (Prettier or Biome). Use --lint <eslint|biome>, --format <prettier|biome>, --no-lint, or --no-format to configure your toolchain."
         ],
         "code": "mkdir Acme\ncd Acme\ntsnx workspace init Acme"
       },
@@ -1789,7 +1790,7 @@ export const docs: Doc[] = [
             ],
             [
               "tsnx workspace init [name]",
-              "Initialize native solution and package workspace files with flexible depth"
+              "Initialize native solution with .gitignore, .editorconfig, linter, and formatter"
             ],
             [
               "tsnx workspace add <path>",

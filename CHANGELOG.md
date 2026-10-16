@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-10-16
+
+### Added
+- **Workspace Tooling & Scaffolding**: Built-in production setup on `tsnx workspace init` generating `.gitignore`, `.editorconfig`, and preconfigured linters/formatters.
+- **Pluggable Linter & Formatter Toolchains**: Added `--lint <eslint|biome>`, `--no-lint`, `--format <prettier|biome>`, and `--no-format` flags to customize developer workflow.
+- **Multi-Target Project References**: `tsnx ref add` and `tsnx ref remove` now accept multiple project targets concurrently with dual-wiring (`tsconfig.json` + `package.json`).
+- **Smart Diagnostics & Typo Suggestions**: Levenshtein distance matching for missing workspace projects with distinct troubleshooting messages for non-workspace external npm dependencies.
+- **Flexible Package Depth**: Workspace patterns default to 3-level depth (`*`, `*/*`, `*/*/*`) with `--depth <n>`, `--packages <globs>`, and auto-expanding hierarchy for deeply nested modules.
+
+### Improved
+- **RFC 9457 Problem Details Validation**: Documented canonical integration for application-level `ValidationException` via `IExceptionHandler` returning `Results.validationProblem`.
+- **Repository Integrity**: Added `.editorconfig`, `.prettierrc`, and `.prettierignore` to root repository workspace.
+
+---
+
 ## [1.0.0-rc.1] - 2026-10-15
 
 ### Added
