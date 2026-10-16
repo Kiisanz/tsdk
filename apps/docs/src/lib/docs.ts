@@ -23,7 +23,7 @@ export type Doc = {
 };
 
 export const repository = "https://github.com/tsnxjs/tsnx";
-export const version = "1.0.2";
+export const version = "1.1.0";
 
 export const helloExample = "import { WebApplication, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\nconst app = builder.build();\n\napp.mapGet('/hello', () => {\n  return Results.json({ message: 'Hello, TSNX!' });\n});\n\nawait app.run();";
 
@@ -92,7 +92,7 @@ export const docs: Doc[] = [
         "id": "familiar-by-design",
         "title": "Familiar by design",
         "text": "If you know ASP.NET, the architecture will feel familiar. TSNX uses JavaScript primitives where they fit: promises for asynchronous work, AbortSignal for cancellation, and explicit schema descriptors for runtime validation. TSNX adapts these concepts; it does not promise complete ASP.NET API parity.",
-        "note": "You are reading the TSNX v1.0.2 documentation. TSNX is stable and production-ready."
+        "note": "You are reading the TSNX v1.1.0 documentation. TSNX is stable and production-ready."
       },
       {
         "id": "request-journey",
@@ -141,7 +141,7 @@ export const docs: Doc[] = [
         "id": "install-the-cli",
         "title": "Install the CLI",
         "text": "Install the stable TSNX CLI globally using npm or pnpm.",
-        "code": "npm install -g @tsnx/cli@1.0.2\ntsnx --version\ntsnx --help",
+        "code": "npm install -g @tsnx/cli@1.1.0\ntsnx --version\ntsnx --help",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -157,7 +157,7 @@ export const docs: Doc[] = [
         "id": "existing-project",
         "title": "Add to an existing project",
         "text": "You can also use the HTTP and hosting packages directly in an existing TypeScript application. Compile and run your application with your existing ESM tooling.",
-        "code": "npm install @tsnx/web@1.0.2 @tsnx/hosting@1.0.2",
+        "code": "npm install @tsnx/web@1.1.0 @tsnx/hosting@1.1.0",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -361,7 +361,7 @@ export const docs: Doc[] = [
         "id": "package-metadata",
         "title": "Package configuration",
         "text": "Use package.json for the package name, dependencies, entry point, and TSNX metadata. Keep tsconfig.json focused on TypeScript compiler settings.",
-        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.0.2\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
+        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.1.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
         "language": "json",
         "filename": "Entrypoints/Host/package.json",
         "note": "Library projects use src/index.ts with main ./dist/index.js and types ./dist/index.d.ts in package.json. TypeScript references control build order; package dependencies make imports available at runtime."
@@ -683,13 +683,50 @@ export const docs: Doc[] = [
       },
       {
         "id": "middleware-di-pattern",
-        "title": "Resolve scoped dependencies in middleware",
-        "text": "Middleware registered via app.use() executes per request. While declarative IMiddleware class auto-binding is coming in v1.1, in TSNX 1.0.2 you can cleanly resolve scoped services via ctx.requestServices or encapsulate logic in a middleware class.",
+        "title": "Class-based middleware with IMiddleware and Scoped DI",
+        "text": "TSNX v1.1 introduces the IMiddleware interface and app.useMiddleware<T>(Class). Middleware classes can declare scoped dependencies in their constructors and are resolved automatically from request services on every request.",
         "filename": "src/main.ts",
         "paragraphs": [
-          "Register your custom middleware class in the DI container with addScoped or addTransient. Inside app.use(), resolve the class instance from ctx.requestServices and delegate execution to it."
+          "Register your custom middleware in the DI container with builder.services.addScoped(MyMiddleware). When app.useMiddleware(MyMiddleware) is added to the pipeline, TSNX resolves a fresh instance from ctx.requestServices per request.",
+          "This pattern matches ASP.NET Core UseMiddleware<T>() and eliminates manual lambda wiring."
         ],
-        "code": "import { WebApplication, type HttpContext } from '@tsnx/web';\n\nexport class CorsMiddleware {\n  async invoke(ctx: HttpContext, next: () => Promise<void>): Promise<void> {\n    ctx.response.setHeader('Access-Control-Allow-Origin', '*');\n    ctx.response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');\n    if (ctx.request.method === 'OPTIONS') {\n      ctx.response.statusCode = 204;\n      return;\n    }\n    await next();\n  }\n}\n\nconst builder = WebApplication.createBuilder();\nbuilder.services.addScoped(CorsMiddleware);\n\nconst app = builder.build();\n\n// Connect class-based middleware with DI request scope\napp.use(async (ctx, next) => {\n  const middleware = ctx.requestServices.get(CorsMiddleware);\n  await middleware.invoke(ctx, next);\n});"
+        "code": "import { WebApplication, type HttpContext, type IMiddleware, type RequestDelegate, createToken } from '@tsnx/web';\n\ninterface IAuditService {\n  record(path: string): void;\n}\nconst AUDIT_SERVICE = createToken<IAuditService>('IAuditService');\n\nexport class AuditMiddleware implements IMiddleware {\n  constructor(private readonly audit: IAuditService) {}\n\n  async invoke(ctx: HttpContext, next: RequestDelegate): Promise<void> {\n    this.audit.record(ctx.request.path);\n    ctx.response.setHeader('X-Audited', 'true');\n    await next(ctx);\n  }\n}\n\nconst builder = WebApplication.createBuilder();\nbuilder.services.addScoped(AuditMiddleware, (sp) => new AuditMiddleware(sp.get(AUDIT_SERVICE)));\n\nconst app = builder.build();\napp.useMiddleware(AuditMiddleware);"
+      },
+      {
+        "id": "cors-middleware",
+        "title": "Cross-Origin Resource Sharing (CORS)",
+        "text": "Configure W3C-compliant CORS with builder.addCors() and apply it to the pipeline using app.useCors(). Supports fluent policies, credentials with origin reflection, automatic OPTIONS preflight short-circuiting (204 No Content), and endpoint-specific overrides.",
+        "filename": "src/main.ts",
+        "paragraphs": [
+          "Use options.addDefaultPolicy() for global rules, or options.addPolicy('Name', ...) for named policies.",
+          "Per W3C specifications, when allowCredentials() is enabled, origins are reflected in Access-Control-Allow-Origin with Vary: Origin instead of an insecure wildcard.",
+          "Endpoints and route groups can override the global policy using .requireCors('PolicyName') or opt-out completely via .disableCors()."
+        ],
+        "code": "import { WebApplication, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.addCors((options) => {\n  options.addDefaultPolicy((policy) => {\n    policy\n      .withOrigins('https://app.example.com')\n      .withMethods('GET', 'POST', 'PUT', 'DELETE')\n      .withHeaders('Content-Type', 'Authorization')\n      .allowCredentials()\n      .setPreflightMaxAge(3600);\n  });\n  options.addPolicy('PublicApi', (policy) => policy.allowAnyOrigin());\n});\n\nconst app = builder.build();\napp.useCors();\n\napp.mapGet('/items', () => Results.ok());\napp.mapGet('/public', () => Results.ok()).requireCors('PublicApi');\napp.mapGet('/internal', () => Results.ok()).disableCors();"
+      },
+      {
+        "id": "forwarded-headers",
+        "title": "Forwarded headers & reverse proxy trust",
+        "text": "When deploying behind Nginx, AWS ALB, Cloudflare, or Kubernetes Ingress, useForwardedHeaders() applies X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host to update request.clientIp, request.scheme (https/http), and request.host.",
+        "filename": "src/main.ts",
+        "paragraphs": [
+          "To prevent IP spoofing, proxies must be explicitly trusted via knownProxies or knownNetworks (IPv4 CIDR matching, e.g. '10.0.0.0/8').",
+          "Hop peeling starts from the immediate proxy and steps backwards through trusted intermediaries to identify the genuine client IP.",
+          "Use ForwardedHeaders bitflags to specify exactly which headers your application honors."
+        ],
+        "code": "import { WebApplication, ForwardedHeaders, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.configureForwardedHeaders((options) => {\n  options.forwardedHeaders =\n    ForwardedHeaders.XForwardedFor |\n    ForwardedHeaders.XForwardedProto |\n    ForwardedHeaders.XForwardedHost;\n  options.knownNetworks = ['10.0.0.0/8', '172.16.0.0/12'];\n});\n\nconst app = builder.build();\napp.useForwardedHeaders();\n\napp.mapGet('/ip', (ctx) => {\n  return Results.json({\n    clientIp: ctx.request.clientIp,\n    scheme: ctx.request.scheme,\n    isHttps: ctx.request.isHttps,\n  });\n});"
+      },
+      {
+        "id": "rate-limiting",
+        "title": "Rate limiting & concurrency control",
+        "text": "Protect your endpoints against abuse using app.useRateLimiter() and builder.addRateLimiter(). Supports Fixed Window, Sliding Window, Token Bucket, and Concurrency limiting algorithms with dynamic partitioning and standard RFC 9457 429 Problem Details.",
+        "filename": "src/main.ts",
+        "paragraphs": [
+          "Define partition keys based on client IP, authenticated user ID, or API key header.",
+          "When a request exceeds limits, the middleware responds with 429 Too Many Requests and an HTTP Retry-After header indicating how many seconds until renewal.",
+          "Endpoints and route groups can declare .requireRateLimiting('policy') or .disableRateLimiting() to bypass limits for webhooks or health checks."
+        ],
+        "code": "import { WebApplication, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\n\nbuilder.addRateLimiter((options) => {\n  options.addFixedWindowLimiter('PerIpLimit', {\n    permitLimit: 60,\n    windowSeconds: 60,\n    partitionKey: (ctx) => ctx.request.clientIp,\n  });\n  options.addTokenBucketLimiter('BurstPolicy', {\n    tokenLimit: 20,\n    tokensPerPeriod: 5,\n    replenishmentPeriodSeconds: 10,\n  });\n});\n\nconst app = builder.build();\napp.useRateLimiter();\n\napp.mapGet('/api/data', () => Results.ok()).requireRateLimiting('PerIpLimit');\napp.mapGet('/health', () => Results.ok()).disableRateLimiting();"
       }
     ],
     "sources": [
@@ -1088,6 +1125,17 @@ export const docs: Doc[] = [
         ],
         "filename": "src/errors/envelope-exception-handler.ts",
         "code": "import { HttpContext, IExceptionHandler, BadHttpRequestException } from '@tsnx/web';\n\nexport class EnvelopedExceptionHandler implements IExceptionHandler {\n  async tryHandleAsync(ctx: HttpContext, error: unknown): Promise<boolean> {\n    const statusCode = error instanceof BadHttpRequestException ? error.statusCode : 500;\n    const message = error instanceof Error ? error.message : 'Internal Server Error';\n\n    await ctx.response.writeJson({\n      success: false,\n      data: null,\n      error: {\n        code: statusCode,\n        message,\n        type: error instanceof Error ? error.name : 'ServerError',\n      },\n      meta: { timestamp: new Date().toISOString() },\n    }, statusCode);\n\n    return true;\n  }\n}\n\n// Register in DI:\n// builder.services.addExceptionHandler<EnvelopedExceptionHandler>(EnvelopedExceptionHandler);"
+      },
+      {
+        "id": "customize-problem-details",
+        "title": "Global Problem Details customization & request correlation ID",
+        "text": "Use builder.addProblemDetails() with the customize hook to universally inject application metadata (such as correlation request IDs, environment tags, or company error codes) into every RFC 9457 Problem Details response.",
+        "paragraphs": [
+          "In TSNX v1.1, HttpContext provides ctx.traceIdentifier, which automatically extracts incoming X-Request-ID headers or generates an RFC-compliant UUID.",
+          "The customize hook executes across all Problem Details responses, including binding failures (400), payload limits (413), route not found (404), method not allowed (405), unhandled exceptions (500), and explicit Results.problem() invocations."
+        ],
+        "filename": "src/main.ts",
+        "code": "import { WebApplication } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\n\n// Configure universal Problem Details customization\nbuilder.addProblemDetails((options) => {\n  options.customize = (ctx, problem) => {\n    problem.extensions = {\n      ...problem.extensions,\n      requestId: ctx.traceIdentifier,\n      environment: builder.configuration.get('Environment'),\n    };\n  };\n});\n\nconst app = builder.build();\nawait app.run();"
       }
     ],
     "sources": [
@@ -1395,13 +1443,13 @@ export const docs: Doc[] = [
       {
         "id": "independent-content-root",
         "title": "Independent content root for migrations, workers, and tests",
-        "text": "By default, JSON settings are resolved relative to process.cwd(). To keep configuration paths independent of the command execution directory (for example, when running database migrations, workers, or integration tests from a monorepo root), pass --contentRoot to createBuilder.",
+        "text": "By default, JSON settings are resolved relative to process.cwd(). To keep configuration paths independent of the command execution directory (for example, when running database migrations, workers, or integration tests from a monorepo root), pass contentRootPath in builder settings or --contentRoot to createBuilder.",
         "paragraphs": [
-          "In TSNX 1.0.2, passing ['--contentRoot', serverRoot, ...args] directs the host to load appsettings.json and environment configurations from serverRoot.",
-          "In v1.1.0, this option will also be supported via programmatic builder options { contentRootPath: serverRoot } across HTTP, hosting, and test builders."
+          "In TSNX v1.1, WebApplication.createBuilder({ contentRootPath: serverRoot, args }) directly configures the content root across HTTP, hosting, and test builders.",
+          "Passing CLI arguments such as ['--contentRoot', serverRoot, ...args] is also fully supported for backward compatibility."
         ],
         "filename": "src/builder.ts",
-        "code": "import { fileURLToPath } from 'node:url';\nimport { WebApplication } from '@tsnx/web';\n\n// Compute absolute root of the project\nexport const serverRoot = fileURLToPath(new URL('../', import.meta.url));\n\nexport function createServerBuilder(args: string[] = []) {\n  // Keep JSON configuration paths independent of the command's working directory\n  return WebApplication.createBuilder(['--contentRoot', serverRoot, ...args]);\n}"
+        "code": "import { fileURLToPath } from 'node:url';\nimport { WebApplication } from '@tsnx/web';\n\n// Compute absolute root of the project\nexport const serverRoot = fileURLToPath(new URL('../', import.meta.url));\n\nexport function createServerBuilder(args: string[] = []) {\n  // Keep JSON configuration paths independent of the command's working directory\n  return WebApplication.createBuilder({\n    contentRootPath: serverRoot,\n    args,\n  });\n}"
       }
     ],
     "sources": [
@@ -1572,6 +1620,18 @@ export const docs: Doc[] = [
         ],
         "filename": "src/main.ts",
         "code": "import process from 'node:process';\nimport { createApp } from './app.js';\n\ntry {\n  const app = createApp(process.argv.slice(2));\n  await app.run();\n} catch (err: unknown) {\n  // Error was already logged by AppHost during failed startup.\n  // Terminate cleanly with a non-zero exit code without duplicate runtime stack dumps.\n  process.exit(1);\n}"
+      },
+      {
+        "id": "category-log-levels",
+        "title": "Hierarchical category log levels & configuration binding",
+        "text": "TSNX v1.1 supports hierarchical log level filtering with longest-prefix category matching. Set category thresholds programmatically or automatically via the Logging:LogLevel section in appsettings.json.",
+        "paragraphs": [
+          "LoggerFactory.setCategoryLevel(categoryPrefix, level) sets minimum levels for any logger whose category begins with the specified prefix (for example, setting level for 'Acme.Data' automatically filters 'Acme.Data.Repositories' and 'Acme.Data.DbContext').",
+          "During host builder initialization, TSNX automatically binds the Logging:LogLevel configuration section from JSON files and environment variables, mapping Default to the root threshold and specific categories to their respective levels."
+        ],
+        "filename": "appsettings.json",
+        "language": "json",
+        "code": "{\n  \"Logging\": {\n    \"LogLevel\": {\n      \"Default\": \"Information\",\n      \"HttpServer\": \"Warning\",\n      \"Acme.Data\": \"Debug\",\n      \"Acme.Internal\": \"None\"\n    }\n  }\n}"
       }
     ],
     "sources": [
@@ -1631,10 +1691,11 @@ export const docs: Doc[] = [
         "paragraphs": [
           "Because DI container constructors and factories are synchronous, asynchronous initialization (such as MikroORM.init() or PrismaClient.$connect()) belongs inside IHostedService.start().",
           "If start() fails or throws an exception, the host cancels boot, gracefully shuts down any previously started services in reverse order, and prevents dangling sockets or pool leaks.",
+          "Note that the host only rolls back services that successfully completed start(); partial resources opened inside a failing start() must be caught and cleaned up in its own catch block before rethrowing.",
           "Expose the resulting instance to request handlers via a scoped token (for example, em.fork() for request-scoped EntityManagers)."
         ],
         "filename": "src/services/database.service.ts",
-        "code": "import { type IHostedService, createToken, WebApplication } from '@tsnx/web';\nimport { MikroORM, type EntityManager } from '@mikro-orm/postgresql';\n\nexport const ORM_TOKEN = createToken<MikroORM>('MikroORM');\nexport const EM_TOKEN = createToken<EntityManager>('EntityManager');\n\nexport class DatabaseService implements IHostedService {\n  private orm?: MikroORM;\n\n  constructor(private readonly config: any) {}\n\n  async start(): Promise<void> {\n    // 1. Asynchronously connect and initialize during host startup\n    this.orm = await MikroORM.init(this.config);\n  }\n\n  async stop(): Promise<void> {\n    // 2. Coordinated teardown on SIGINT/SIGTERM or when startup fails\n    if (this.orm) {\n      await this.orm.close(true);\n    }\n  }\n\n  get instance(): MikroORM {\n    if (!this.orm) throw new Error('Database service has not been initialized.');\n    return this.orm;\n  }\n}\n\n// In builder:\n// builder.services.addSingleton(DatabaseService);\n// builder.services.addHostedService().toFactory((sp) => sp.get(DatabaseService));\n// builder.services.addSingleton(ORM_TOKEN, (sp) => sp.get(DatabaseService).instance);\n// builder.services.addScoped(EM_TOKEN, (sp) => sp.get(ORM_TOKEN).em.fork());"
+        "code": "import { type IHostedService, createToken, WebApplication } from '@tsnx/web';\nimport { MikroORM, type EntityManager } from '@mikro-orm/postgresql';\n\nexport const ORM_TOKEN = createToken<MikroORM>('MikroORM');\nexport const EM_TOKEN = createToken<EntityManager>('EntityManager');\n\nexport class DatabaseService implements IHostedService {\n  private orm?: MikroORM;\n\n  constructor(private readonly config: any) {}\n\n  async start(): Promise<void> {\n    try {\n      // 1. Asynchronously connect and initialize during host startup\n      this.orm = await MikroORM.init(this.config);\n    } catch (err) {\n      // 2. Clean up partially allocated resources if start fails before rethrowing\n      if (this.orm) {\n        await this.orm.close(true);\n        this.orm = undefined;\n      }\n      throw err;\n    }\n  }\n\n  async stop(): Promise<void> {\n    // 3. Coordinated teardown on SIGINT/SIGTERM or normal shutdown\n    if (this.orm) {\n      await this.orm.close(true);\n    }\n  }\n\n  get instance(): MikroORM {\n    if (!this.orm) throw new Error('Database service has not been initialized.');\n    return this.orm;\n  }\n}\n\n// In builder:\n// builder.services.addSingleton(DatabaseService);\n// builder.services.addHostedService((sp) => sp.get(DatabaseService));\n// builder.services.addSingleton(ORM_TOKEN, (sp) => sp.get(DatabaseService).instance);\n// builder.services.addScoped(EM_TOKEN, (sp) => sp.get(ORM_TOKEN).em.fork());"
       }
     ],
     "sources": [
@@ -2133,15 +2194,15 @@ export const docs: Doc[] = [
   },
   {
     "slug": "features",
-    "title": "v1.0 Feature Map & Release Overview",
+    "title": "v1.1 Feature Map & Release Overview",
     "group": "Reference",
-    "description": "Comprehensive overview of features, runtime contracts, and platform capabilities in TSNX v1.0.",
+    "description": "Comprehensive overview of features, runtime contracts, and platform capabilities in TSNX v1.1.",
     "source": "packages/web/src/index.ts",
     "sections": [
       {
         "id": "documentation-scope",
         "title": "Scope of these guides",
-        "text": "These guides describe the stable TSNX framework repository and package ecosystem (v1.0.2). Examples are checked against its exported TypeScript declarations and verified with end-to-end regression suites.",
+        "text": "These guides describe the stable TSNX framework repository and package ecosystem (v1.1.0). Examples are checked against its exported TypeScript declarations and verified with end-to-end regression suites.",
         "paragraphs": [
           "Implementation links and regression-test references accompany the guides. Source behavior takes precedence over older README examples, architecture proposals, and legacy samples. Where a feature is application-owned, the guide says so."
         ]
@@ -2162,11 +2223,23 @@ export const docs: Doc[] = [
             ],
             [
               "HTTP middleware",
-              "Ordered async pipeline with single-call next guard"
+              "Ordered async pipeline with single-call next guard and IMiddleware class DI auto-binding"
+            ],
+            [
+              "CORS",
+              "W3C-compliant policies, allowCredentials with Vary: Origin, preflight 204 short-circuiting, .requireCors() and .disableCors()"
+            ],
+            [
+              "Forwarded headers",
+              "Reverse proxy trust, CIDR subnet matching, multi-hop peeling, X-Forwarded-For/Proto/Host mutation"
+            ],
+            [
+              "Rate limiting",
+              "Fixed window, sliding window, token bucket, concurrency limiters, dynamic partitioning, 429 Problem Details, Retry-After"
             ],
             [
               "Route groups",
-              "Nested prefixes, inherited metadata and filters"
+              "Nested prefixes, inherited metadata, filters, and endpoint policy overrides"
             ],
             [
               "Binding",
@@ -2182,15 +2255,15 @@ export const docs: Doc[] = [
             ],
             [
               "Responses",
-              "JSON, text, HTML, status, Problem Details, and Node streams"
+              "JSON, text, HTML, status, Problem Details (RFC 9457), customizeProblemDetails hook, and Node streams"
             ],
             [
               "Lifecycle hooks",
-              "Awaited onStarting and once-only onCompleted"
+              "Awaited onStarting, once-only onCompleted, and ctx.traceIdentifier request correlation"
             ],
             [
               "API reference",
-              "OpenAPI 3.1 generation plus optional Scalar page"
+              "OpenAPI 3.1 generation plus optional Scalar interactive reference page"
             ]
           ]
         }
@@ -2215,7 +2288,7 @@ export const docs: Doc[] = [
             ],
             [
               "Configuration",
-              "Ordered memory, JSON, environment, CLI providers; explicit reload"
+              "Ordered memory, JSON, environment, CLI providers, contentRootPath settings, and explicit reload"
             ],
             [
               "Options",
@@ -2223,11 +2296,11 @@ export const docs: Doc[] = [
             ],
             [
               "Logging",
-              "Console categories, severity threshold, numeric event IDs"
+              "Hierarchical category log levels with longest-prefix matching, console output, and Logging:LogLevel auto-binding"
             ],
             [
               "Hosted services",
-              "Ordered start/stop, background cancellation and failure propagation"
+              "Ordered start/stop, graceful rollback on startup failure, background cancellation and failure propagation"
             ],
             [
               "Shutdown",
@@ -2246,6 +2319,10 @@ export const docs: Doc[] = [
             "Implemented contract"
           ],
           "rows": [
+            [
+              "Integration testing",
+              "@tsnx/testing with WebApplicationFactory, TestHttpClient, and scoped DI overrides"
+            ],
             [
               "Scaffolding",
               "console/library/webapi templates generating tsconfig.json and package.json"
