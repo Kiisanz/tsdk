@@ -365,12 +365,12 @@ describe('WebApplication Integration', () => {
 
   test('WebApplication.createBuilder accepts HostApplicationBuilderSettings', () => {
     const builder = WebApplication.createBuilder({
-      environmentName: 'Staging',
+      environment: 'Staging',
       contentRootPath: '/custom/root',
       args: ['--Server:Port=8080'],
     });
 
-    assert.equal(builder.hostOptions.environmentName, 'Staging');
+    assert.equal(builder.configuration.get('Environment'), 'Staging');
     assert.equal(builder.hostOptions.contentRootPath, '/custom/root');
     assert.equal(builder.configuration.get('Server:Port'), '8080');
   });
