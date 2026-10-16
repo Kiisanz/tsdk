@@ -26,6 +26,10 @@ Options for "workspace init":
   --no-scope                 Disable automatic package scope derivation
   --depth <n>                Glob depth for workspace packages (defaults to 3: *, */*, */*/*)
   --packages <patterns>      Comma-separated custom package globs (e.g. "apps/*,packages/*")
+  --lint <eslint|biome>      Linter choice (defaults to eslint)
+  --no-lint                  Disable linter configuration
+  --format <prettier|biome>  Formatter choice (defaults to prettier)
+  --no-format                Disable code formatter configuration
 `);
     return 0;
   }
@@ -35,6 +39,10 @@ Options for "workspace init":
     let explicitScope: string | undefined;
     let explicitDepth: number | undefined;
     let explicitPackages: string[] | undefined;
+    let explicitLint: 'eslint' | 'biome' | undefined;
+    let noLint = false;
+    let explicitFormat: 'prettier' | 'biome' | undefined;
+    let noFormat = false;
     let noScope = false;
     const positional: string[] = [];
 
@@ -88,6 +96,60 @@ Options for "workspace init":
         explicitPackages = arg.slice(11).split(',').map((s) => s.trim());
         continue;
       }
+      if (arg === '--lint') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          const val = args[++i].toLowerCase();
+          if (val !== 'eslint' && val !== 'biome') {
+            console.error(`[TSNX Error] Invalid linter "${val}". Supported options: eslint, biome (or --no-lint)`);
+            return 1;
+          }
+          explicitLint = val as 'eslint' | 'biome';
+        } else {
+          console.error('[TSNX Error] Missing value for --lint. Supported options: eslint, biome');
+          return 1;
+        }
+        continue;
+      }
+      if (arg.startsWith('--lint=')) {
+        const val = arg.slice(7).toLowerCase();
+        if (val !== 'eslint' && val !== 'biome') {
+          console.error(`[TSNX Error] Invalid linter "${val}". Supported options: eslint, biome (or --no-lint)`);
+          return 1;
+        }
+        explicitLint = val as 'eslint' | 'biome';
+        continue;
+      }
+      if (arg === '--no-lint') {
+        noLint = true;
+        continue;
+      }
+      if (arg === '--format') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          const val = args[++i].toLowerCase();
+          if (val !== 'prettier' && val !== 'biome') {
+            console.error(`[TSNX Error] Invalid formatter "${val}". Supported options: prettier, biome (or --no-format)`);
+            return 1;
+          }
+          explicitFormat = val as 'prettier' | 'biome';
+        } else {
+          console.error('[TSNX Error] Missing value for --format. Supported options: prettier, biome');
+          return 1;
+        }
+        continue;
+      }
+      if (arg.startsWith('--format=')) {
+        const val = arg.slice(9).toLowerCase();
+        if (val !== 'prettier' && val !== 'biome') {
+          console.error(`[TSNX Error] Invalid formatter "${val}". Supported options: prettier, biome (or --no-format)`);
+          return 1;
+        }
+        explicitFormat = val as 'prettier' | 'biome';
+        continue;
+      }
+      if (arg === '--no-format') {
+        noFormat = true;
+        continue;
+      }
       if (!arg.startsWith('-')) {
         positional.push(arg);
       }
@@ -106,6 +168,10 @@ Options for "workspace init":
         noScope,
         depth: explicitDepth,
         packages: explicitPackages,
+        lint: explicitLint,
+        noLint,
+        format: explicitFormat,
+        noFormat,
       });
       console.log(`\n✔ Initialized workspace "${wsName}" at ${createdPath}`);
       return 0;

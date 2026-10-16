@@ -3,6 +3,9 @@ import * as path from 'node:path';
 import { derivePackageScope, parseJsonc, toKebabCase, TsWorkspace, validateNpmScope } from '@tsnx/core';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
+export type LinterChoice = 'eslint' | 'biome' | 'none';
+export type FormatterChoice = 'prettier' | 'biome' | 'none';
+
 export interface InitWorkspaceOptions {
   name: string;
   scope?: string;
@@ -10,6 +13,10 @@ export interface InitWorkspaceOptions {
   targetDir?: string;
   depth?: number;
   packages?: string[];
+  lint?: 'eslint' | 'biome' | 'none';
+  noLint?: boolean;
+  format?: 'prettier' | 'biome' | 'none';
+  noFormat?: boolean;
 }
 
 export class WorkspaceManager {
@@ -57,6 +64,60 @@ export class WorkspaceManager {
       packagePatterns = Array.from({ length: depth }, (_, i) => Array(i + 1).fill('*').join('/'));
     }
 
+    // Determine effective linter and formatter
+    const effectiveLint =
+      opts.noLint || opts.lint === 'none'
+        ? 'none'
+        : opts.lint === 'biome'
+          ? 'biome'
+          : 'eslint';
+
+    const effectiveFormat =
+      opts.noFormat || opts.format === 'none'
+        ? 'none'
+        : opts.format === 'biome'
+          ? 'biome'
+          : 'prettier';
+
+    const devDeps: Record<string, string> = {
+      '@types/node': '^22.13.9',
+      typescript: '^5.8.2',
+    };
+    const scripts: Record<string, string> = {
+      build: 'tsc -b',
+      clean: 'tsc -b --clean',
+    };
+
+    if (effectiveLint === 'eslint') {
+      devDeps['eslint'] = '^9.21.0';
+      devDeps['@eslint/js'] = '^9.21.0';
+      devDeps['typescript-eslint'] = '^8.26.0';
+      scripts['lint'] = 'eslint .';
+      scripts['lint:fix'] = 'eslint . --fix';
+    }
+
+    if (effectiveFormat === 'prettier') {
+      devDeps['prettier'] = '^3.5.3';
+      scripts['format'] = 'prettier --write .';
+      scripts['format:check'] = 'prettier --check .';
+    }
+
+    if (effectiveLint === 'biome' || effectiveFormat === 'biome') {
+      devDeps['@biomejs/biome'] = '^1.9.4';
+      if (effectiveLint === 'biome' && effectiveFormat === 'biome') {
+        scripts['lint'] = 'biome check .';
+        scripts['lint:fix'] = 'biome check --write .';
+        scripts['format'] = 'biome format --write .';
+        scripts['format:check'] = 'biome format .';
+      } else if (effectiveLint === 'biome') {
+        scripts['lint'] = 'biome lint .';
+        scripts['lint:fix'] = 'biome lint --write .';
+      } else if (effectiveFormat === 'biome') {
+        scripts['format'] = 'biome format --write .';
+        scripts['format:check'] = 'biome format .';
+      }
+    }
+
     // 1. Root package.json
     let pkgJson: Record<string, any> = {};
     if (fs.existsSync(pkgJsonPath)) {
@@ -69,9 +130,12 @@ export class WorkspaceManager {
     pkgJson.name = pkgJson.name ?? toKebabCase(name);
     pkgJson.private = true;
     pkgJson.workspaces = pkgJson.workspaces ?? [...packagePatterns];
+    pkgJson.scripts = {
+      ...scripts,
+      ...(pkgJson.scripts ?? {}),
+    };
     pkgJson.devDependencies = {
-      '@types/node': '^22.13.9',
-      typescript: '^5.7.3',
+      ...devDeps,
       ...(pkgJson.devDependencies ?? {}),
     };
     pkgJson.tsnx = {
@@ -104,6 +168,144 @@ export class WorkspaceManager {
     if (!fs.existsSync(pnpmWsPath)) {
       const pnpmWsContent = `packages:\n${packagePatterns.map((p) => `  - '${p}'`).join('\n')}\n`;
       fs.writeFileSync(pnpmWsPath, pnpmWsContent, 'utf-8');
+    }
+
+    // 4. .gitignore
+    const gitignorePath = path.join(targetDir, '.gitignore');
+    if (!fs.existsSync(gitignorePath)) {
+      const gitignoreContent = `# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+coverage/
+
+# TSNX artifacts
+.tsnx/
+.tsdk/
+
+# Logs & temporary files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & local settings
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+`;
+      fs.writeFileSync(gitignorePath, gitignoreContent, 'utf-8');
+    }
+
+    // 5. .editorconfig
+    const editorconfigPath = path.join(targetDir, '.editorconfig');
+    if (!fs.existsSync(editorconfigPath)) {
+      const editorconfigContent = `root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+`;
+      fs.writeFileSync(editorconfigPath, editorconfigContent, 'utf-8');
+    }
+
+    // 6. Prettier configuration
+    if (effectiveFormat === 'prettier') {
+      const prettierrcPath = path.join(targetDir, '.prettierrc');
+      if (!fs.existsSync(prettierrcPath)) {
+        const prettierrcContent =
+          JSON.stringify(
+            {
+              semi: true,
+              singleQuote: true,
+              tabWidth: 2,
+              trailingComma: 'all',
+              printWidth: 100,
+            },
+            null,
+            2,
+          ) + '\n';
+        fs.writeFileSync(prettierrcPath, prettierrcContent, 'utf-8');
+      }
+
+      const prettierignorePath = path.join(targetDir, '.prettierignore');
+      if (!fs.existsSync(prettierignorePath)) {
+        const prettierignoreContent = `node_modules
+dist
+coverage
+*.tsbuildinfo
+.tsnx
+.tsdk
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+`;
+        fs.writeFileSync(prettierignorePath, prettierignoreContent, 'utf-8');
+      }
+    }
+
+    // 7. ESLint configuration
+    if (effectiveLint === 'eslint') {
+      const eslintConfigPath = path.join(targetDir, 'eslint.config.mjs');
+      if (!fs.existsSync(eslintConfigPath)) {
+        const eslintConfigContent = `import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '**/*.tsbuildinfo', '.tsnx/**'],
+  },
+);
+`;
+        fs.writeFileSync(eslintConfigPath, eslintConfigContent, 'utf-8');
+      }
+    }
+
+    // 8. Biome configuration
+    if (effectiveLint === 'biome' || effectiveFormat === 'biome') {
+      const biomePath = path.join(targetDir, 'biome.json');
+      if (!fs.existsSync(biomePath)) {
+        const biomeConfig = {
+          $schema: 'https://biomejs.dev/schemas/1.9.4/schema.json',
+          vcs: {
+            enabled: true,
+            clientKind: 'git',
+            useIgnoreFile: true,
+          },
+          files: {
+            ignore: ['dist/**', 'node_modules/**', 'coverage/**', '**/*.tsbuildinfo', '.tsnx/**'],
+          },
+          formatter: {
+            enabled: effectiveFormat === 'biome',
+            indentStyle: 'space',
+            indentWidth: 2,
+            lineWidth: 100,
+          },
+          linter: {
+            enabled: effectiveLint === 'biome',
+            rules: {
+              recommended: true,
+            },
+          },
+        };
+        fs.writeFileSync(biomePath, JSON.stringify(biomeConfig, null, 2) + '\n', 'utf-8');
+      }
     }
 
     return tsconfigPath;

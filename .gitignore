@@ -1,5 +1,6 @@
 node_modules/
 dist/
+coverage/
 *.tsbuildinfo
 .DS_Store
 *.log
@@ -7,6 +8,9 @@ dist/
 .tsdk/
 .tsnx/
 *.vsix
+.env
+.env.local
+.env.*.local
 
 # Internal
 AGENTS.md
