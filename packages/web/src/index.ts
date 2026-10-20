@@ -11,6 +11,7 @@ export * from './metadata/index.js';
 export * from './groups/index.js';
 export * from './cors/index.js';
 export * from './rate-limiting/index.js';
+export * from './endpoints/index.js';
 
 
 // Shared framework re-exports (ASP.NET Core style: DI, Config, Logging, Hosting)

@@ -5,6 +5,10 @@ import type { EndpointMetadataItem } from '../metadata/types.js';
 import type { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
 import { ENABLE_CORS_KEY, DISABLE_CORS_KEY } from '../cors/types.js';
 import { ENABLE_RATE_LIMITING_KEY, DISABLE_RATE_LIMITING_KEY } from '../rate-limiting/types.js';
+import type { IEndpointRouteBuilder, EndpointType } from '../endpoints/types.js';
+import { ENDPOINT_TOKEN } from '../endpoints/types.js';
+import { invokeEndpoint } from '../endpoints/invoker.js';
+import type { IServiceProvider } from '@tsnx/hosting';
 
 
 export function combinePaths(base: string, relative: string): string {
@@ -15,7 +19,7 @@ export function combinePaths(base: string, relative: string): string {
   return combined === '' ? '/' : combined.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 }
 
-export class RouteGroupBuilder {
+export class RouteGroupBuilder implements IEndpointRouteBuilder {
   private readonly filters: EndpointFilterType[] = [];
   private readonly metadataItems: EndpointMetadataItem[] = [];
 
@@ -231,18 +235,77 @@ export class RouteGroupBuilder {
     return this.mapEndpoint('PATCH', pattern, handlerOrDescriptors, maybeHandler);
   }
 
-  private mapEndpoint(
+  public get services(): IServiceProvider | undefined {
+    try {
+      return this.getApp()?.services;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Maps one or more endpoint classes, instances, or mapping functions under this route group.
+   * If called with no arguments, maps all endpoints registered in DI under this route group.
+   */
+  public mapEndpoints(...endpoints: (EndpointType | readonly EndpointType[])[]): this {
+    if (endpoints.length === 0) {
+      const app = this.getApp();
+      const hostBuilder = app?.hostBuilderInstance;
+      if (hostBuilder) {
+        const descriptors = hostBuilder.services.findAll(ENDPOINT_TOKEN);
+        for (const desc of descriptors) {
+          if (desc.implementationType) {
+            const ep = app.servicesIfAvailable
+              ? app.servicesIfAvailable.get(desc.implementationType)
+              : new (desc.implementationType as any)();
+            invokeEndpoint(this, ep);
+          } else if (desc.factory) {
+            const ep = desc.factory(this.services);
+            invokeEndpoint(this, ep);
+          }
+        }
+      }
+      return this;
+    }
+
+    for (const item of endpoints) {
+      if (Array.isArray(item)) {
+        this.mapEndpoints(...item);
+      } else {
+        invokeEndpoint(this, item);
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Maps a single endpoint class, instance, or mapping function under this route group.
+   */
+  public mapEndpoint(endpoint: EndpointType): this;
+  /**
+   * Maps an endpoint for an arbitrary HTTP method under this route group.
+   */
+  public mapEndpoint(
     method: string,
     pattern: string,
     handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
     maybeHandler?: (...args: any[]) => any,
-  ): RouteHandlerBuilder {
+  ): RouteHandlerBuilder;
+  public mapEndpoint(
+    methodOrEndpoint: string | EndpointType,
+    pattern?: string,
+    handlerOrDescriptors?: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+  ): RouteHandlerBuilder | this {
+    if (typeof methodOrEndpoint !== 'string') {
+      return this.mapEndpoints(methodOrEndpoint);
+    }
     const app = this.getApp();
     if (!app) {
       throw new Error(`WebApplication instance is not attached to RouteGroup '${this.prefix}'.`);
     }
-    const fullPath = combinePaths(this.prefix, pattern);
+    const fullPath = combinePaths(this.prefix, pattern!);
     // Delegate to app with parentGroup attached
-    return app.mapEndpoint(method, fullPath, handlerOrDescriptors, maybeHandler, this);
+    return app.mapEndpoint(methodOrEndpoint, fullPath, handlerOrDescriptors!, maybeHandler, this);
   }
 }

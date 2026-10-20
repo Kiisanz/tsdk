@@ -425,6 +425,16 @@ export const docs: Doc[] = [
         "filename": "src/main.ts"
       },
       {
+        "id": "modular-endpoints",
+        "title": "Modular endpoints with IEndpoint",
+        "text": "Instead of declaring all routes inline in program.ts, organize endpoints by feature or module with IEndpoint (modeled after ASP.NET Core community standard IEndpoint and Carter). Both WebApplication and RouteGroupBuilder implement IEndpointRouteBuilder.",
+        "paragraphs": [
+          "Endpoints can be mapped directly onto the app, mounted onto a route group (e.g. app.mapGroup('/api/v1')), or registered in DI via builder.services.addEndpoint() and auto-mapped with app.mapEndpoints()."
+        ],
+        "code": "import { WebApplication, Results, type IEndpoint, type IEndpointRouteBuilder } from '@tsnx/web';\n\nexport class WarehouseEndpoints implements IEndpoint {\n  mapEndpoint(app: IEndpointRouteBuilder): void {\n    const group = app.mapGroup('/warehouses').withTags('Warehouses');\n\n    group.mapGet('/', () => Results.ok([]))\n      .withSummary('List all warehouses');\n\n    group.mapPost('/', async (ctx) => {\n      const body = await ctx.request.readJson();\n      return Results.created('/warehouses/1', body);\n    });\n  }\n}\n\nconst builder = WebApplication.createBuilder();\n\n// Option 1: Register in DI (e.g. inside an IServiceInstaller)\nbuilder.services.addEndpoint(WarehouseEndpoints);\n\nconst app = builder.build();\n\n// Option 1 (auto-maps DI endpoints):\napp.mapEndpoints();\n\n// Option 2 (explicit mapping, also supports route groups):\n// app.mapGroup('/api/v1').mapEndpoints(WarehouseEndpoints);",
+        "filename": "src/endpoints/warehouse.endpoints.ts"
+      },
+      {
         "id": "http-behavior",
         "title": "HTTP behavior",
         "text": "The router supports automatic HEAD and OPTIONS handling. An unmatched path returns 404. A path that exists for another HTTP method returns 405 with an Allow header. Route parameter decoding can fail with a bad-request response."

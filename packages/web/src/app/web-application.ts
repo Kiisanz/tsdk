@@ -41,6 +41,13 @@ import { DefaultEndpointFilterInvocationContext } from '../filters/invocation-co
 import { EndpointArgumentDescriptor, InferDescriptors } from '../descriptors/types.js';
 import { RouteGroupBuilder } from '../groups/route-group-builder.js';
 import { EndpointMetadataCollection } from '../metadata/collection.js';
+import {
+  type IEndpointRouteBuilder,
+  type EndpointType,
+  ENDPOINT_TOKEN,
+} from '../endpoints/types.js';
+import { invokeEndpoint } from '../endpoints/invoker.js';
+import '../endpoints/registration.js';
 
 export interface EndpointInfo {
   readonly method: string;
@@ -129,6 +136,16 @@ export class WebApplicationBuilder {
     return this;
   }
 
+  public addEndpoint(endpoint: EndpointType): this {
+    this.services.addEndpoint(endpoint);
+    return this;
+  }
+
+  public addEndpoints(endpoints: readonly EndpointType[]): this {
+    this.services.addEndpoints(endpoints);
+    return this;
+  }
+
   public addRateLimiter(configure?: (options: RateLimiterOptions) => void): this {
     this.services.addRateLimiter(configure);
     return this;
@@ -167,7 +184,7 @@ export class WebApplicationBuilder {
   }
 }
 
-export class WebApplication {
+export class WebApplication implements IEndpointRouteBuilder {
   private readonly hostBuilder: HostApplicationBuilder;
   private readonly router: Router;
   private readonly pipeline: MiddlewarePipeline;
@@ -187,6 +204,14 @@ export class WebApplication {
     this.router = router;
     this.pipeline = pipeline;
     this.initialServerOptions = serverOptions;
+  }
+
+  public get hostBuilderInstance(): HostApplicationBuilder {
+    return this.hostBuilder;
+  }
+
+  public get servicesIfAvailable(): IServiceProvider | undefined {
+    return this.appHost?.services;
   }
 
   public get services(): IServiceProviderRoot {
@@ -398,17 +423,65 @@ export class WebApplication {
     });
   }
 
+  /**
+   * Maps one or more endpoint classes, instances, or mapping functions.
+   * If called with no arguments, maps all endpoints registered in DI via services.addEndpoint().
+   */
+  public mapEndpoints(...endpoints: (EndpointType | readonly EndpointType[])[]): this {
+    if (endpoints.length === 0) {
+      const descriptors = this.hostBuilder.services.findAll(ENDPOINT_TOKEN);
+      for (const desc of descriptors) {
+        if (desc.implementationType) {
+          const ep = this.servicesIfAvailable
+            ? this.servicesIfAvailable.get(desc.implementationType)
+            : new (desc.implementationType as any)();
+          invokeEndpoint(this, ep);
+        } else if (desc.factory) {
+          const ep = desc.factory(this.servicesIfAvailable);
+          invokeEndpoint(this, ep);
+        }
+      }
+      return this;
+    }
+
+    for (const item of endpoints) {
+      if (Array.isArray(item)) {
+        this.mapEndpoints(...item);
+      } else {
+        invokeEndpoint(this, item);
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Maps a single endpoint class, instance, or mapping function.
+   */
+  public mapEndpoint(endpoint: EndpointType): this;
+  /**
+   * Maps an endpoint for an arbitrary HTTP method.
+   */
   public mapEndpoint(
     method: string,
     pattern: string,
     handlerOrDescriptors: RouteHandler | readonly EndpointArgumentDescriptor[],
     maybeHandler?: (...args: any[]) => any,
     parentGroup?: RouteGroupBuilder,
-  ): RouteHandlerBuilder {
-    const builder = new RouteHandlerBuilder(method, pattern, parentGroup);
+  ): RouteHandlerBuilder;
+  public mapEndpoint(
+    methodOrEndpoint: string | EndpointType,
+    pattern?: string,
+    handlerOrDescriptors?: RouteHandler | readonly EndpointArgumentDescriptor[],
+    maybeHandler?: (...args: any[]) => any,
+    parentGroup?: RouteGroupBuilder,
+  ): RouteHandlerBuilder | this {
+    if (typeof methodOrEndpoint !== 'string') {
+      return this.mapEndpoints(methodOrEndpoint);
+    }
+    const builder = new RouteHandlerBuilder(methodOrEndpoint, pattern!, parentGroup);
     if (Array.isArray(handlerOrDescriptors)) {
       if (!maybeHandler) {
-        throw new Error(`Handler function is required when descriptors are provided for route [${method}] ${pattern}`);
+        throw new Error(`Handler function is required when descriptors are provided for route [${methodOrEndpoint}] ${pattern}`);
       }
 
       // Validate at registration time: a route cannot have multiple body() descriptors
@@ -416,13 +489,13 @@ export class WebApplication {
       const bodyCount = handlerOrDescriptors.filter(d => d.source === 'body').length;
       if (bodyCount > 1) {
         throw new Error(
-          `Invalid route definition for [${method}] ${pattern}: found ${bodyCount} body() descriptors. An endpoint can bind the request body at most once.`
+          `Invalid route definition for [${methodOrEndpoint}] ${pattern}: found ${bodyCount} body() descriptors. An endpoint can bind the request body at most once.`
         );
       }
 
-      this.router.map(method, pattern, maybeHandler, handlerOrDescriptors, builder);
+      this.router.map(methodOrEndpoint, pattern!, maybeHandler, handlerOrDescriptors, builder);
     } else {
-      this.router.map(method, pattern, handlerOrDescriptors as (...args: any[]) => any, undefined, builder);
+      this.router.map(methodOrEndpoint, pattern!, handlerOrDescriptors as (...args: any[]) => any, undefined, builder);
     }
     return builder;
   }
