@@ -272,7 +272,7 @@ export class RouteGroupBuilder implements IEndpointRouteBuilder {
       if (Array.isArray(item)) {
         this.mapEndpoints(...item);
       } else {
-        invokeEndpoint(this, item);
+        invokeEndpoint(this, item as EndpointType);
       }
     }
     return this;

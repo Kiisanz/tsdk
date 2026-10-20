@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-20
+
+### Added
+- **@tsnx/mediator Package**: New core mediator package modeled after .NET MediatR with zero reflection/metadata runtime overhead. Features request/response pipeline (`send`), notification broadcasting (`publish`) with sequential or parallel strategies, Onion-architecture pipeline behaviors (`IPipelineBehavior`), request-scoped DI resolution, and cancellation token (`AbortSignal`) support.
+- **Service Installer Pattern (`IServiceInstaller`)**: Added `IServiceInstaller` and `ServiceInstallerType` in `@tsnx/hosting-abstractions`, `@tsnx/hosting`, and `@tsnx/web`. Enables clean modular registration via `builder.install(...)` and `services.install(...)` accepting single instances, classes, and arrays.
+- **Modular Endpoints Pattern (`IEndpoint` & `IEndpoints`)**: Added Carter / FastEndpoints style endpoint encapsulation in `@tsnx/web`. Both `WebApplication` and `RouteGroupBuilder` implement `IEndpointRouteBuilder`. Endpoints can be mapped via `app.mapEndpoints(...)`, scoped under route groups (`group.mapEndpoints(...)`), or registered in DI via `services.addEndpoint(...)` and auto-mapped with `app.mapEndpoints()`.
+- **Public RouteGroupBuilder.mapEndpoint**: Exposed `mapEndpoint` on route groups enabling custom route mapping and generic endpoint delegation.
+
+---
+
 ## [1.1.0] - 2026-10-16
 
 ### Added

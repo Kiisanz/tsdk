@@ -1,14 +1,12 @@
 import { ServiceCollection } from '@tsnx/hosting';
 import { ENDPOINT_TOKEN, type EndpointType } from './types.js';
 
-declare module '@tsnx/hosting-abstractions' {
+declare module '@tsnx/hosting' {
   interface IServiceCollection {
     addEndpoint(endpoint: EndpointType): this;
     addEndpoints(endpoints: readonly EndpointType[]): this;
   }
-}
 
-declare module '@tsnx/hosting' {
   interface ServiceCollection {
     addEndpoint(endpoint: EndpointType): this;
     addEndpoints(endpoints: readonly EndpointType[]): this;

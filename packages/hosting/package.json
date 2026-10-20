@@ -1,6 +1,6 @@
 {
   "name": "@tsnx/hosting",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "TSNX Application Hosting Foundation - DI, Configuration, Logging, Hosted Services, and Application Lifecycle",
   "license": "MIT",
   "type": "module",

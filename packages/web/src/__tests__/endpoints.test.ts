@@ -24,7 +24,7 @@ describe('IEndpoint and IEndpointRouteBuilder', () => {
         routes.mapGet('/users', () => Results.json([{ id: 1, name: 'Alice' }]));
         routes.mapPost('/users', async (ctx) => {
           const body = await ctx.request.readJson<{ name: string }>();
-          return Results.created('/users/2', { id: 2, name: body.name });
+          return Results.created({ id: 2, name: body.name }, '/users/2');
         });
       }
     }

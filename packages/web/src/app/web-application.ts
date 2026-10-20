@@ -437,7 +437,7 @@ export class WebApplication implements IEndpointRouteBuilder {
             : new (desc.implementationType as any)();
           invokeEndpoint(this, ep);
         } else if (desc.factory) {
-          const ep = desc.factory(this.servicesIfAvailable);
+          const ep = desc.factory(this.servicesIfAvailable!);
           invokeEndpoint(this, ep);
         }
       }
@@ -448,7 +448,7 @@ export class WebApplication implements IEndpointRouteBuilder {
       if (Array.isArray(item)) {
         this.mapEndpoints(...item);
       } else {
-        invokeEndpoint(this, item);
+        invokeEndpoint(this, item as EndpointType);
       }
     }
     return this;

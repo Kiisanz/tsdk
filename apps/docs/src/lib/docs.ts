@@ -23,7 +23,7 @@ export type Doc = {
 };
 
 export const repository = "https://github.com/tsnxjs/tsnx";
-export const version = "1.1.0";
+export const version = "1.2.0";
 
 export const helloExample = "import { WebApplication, Results } from '@tsnx/web';\n\nconst builder = WebApplication.createBuilder();\nconst app = builder.build();\n\napp.mapGet('/hello', () => {\n  return Results.json({ message: 'Hello, TSNX!' });\n});\n\nawait app.run();";
 
@@ -92,7 +92,7 @@ export const docs: Doc[] = [
         "id": "familiar-by-design",
         "title": "Familiar by design",
         "text": "If you know ASP.NET, the architecture will feel familiar. TSNX uses JavaScript primitives where they fit: promises for asynchronous work, AbortSignal for cancellation, and explicit schema descriptors for runtime validation. TSNX adapts these concepts; it does not promise complete ASP.NET API parity.",
-        "note": "You are reading the TSNX v1.1.0 documentation. TSNX is stable and production-ready."
+        "note": "You are reading the TSNX v1.2.0 documentation. TSNX is stable and production-ready."
       },
       {
         "id": "request-journey",
@@ -141,7 +141,7 @@ export const docs: Doc[] = [
         "id": "install-the-cli",
         "title": "Install the CLI",
         "text": "Install the stable TSNX CLI globally using npm or pnpm.",
-        "code": "npm install -g @tsnx/cli@1.1.0\ntsnx --version\ntsnx --help",
+        "code": "npm install -g @tsnx/cli@1.2.0\ntsnx --version\ntsnx --help",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -157,7 +157,7 @@ export const docs: Doc[] = [
         "id": "existing-project",
         "title": "Add to an existing project",
         "text": "You can also use the HTTP and hosting packages directly in an existing TypeScript application. Compile and run your application with your existing ESM tooling.",
-        "code": "npm install @tsnx/web@1.1.0 @tsnx/hosting@1.1.0",
+        "code": "npm install @tsnx/web@1.2.0 @tsnx/hosting@1.2.0",
         "language": "bash",
         "filename": "Terminal"
       },
@@ -361,7 +361,7 @@ export const docs: Doc[] = [
         "id": "package-metadata",
         "title": "Package configuration",
         "text": "Use package.json for the package name, dependencies, entry point, and TSNX metadata. Keep tsconfig.json focused on TypeScript compiler settings.",
-        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.1.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
+        "code": "{\n  \"name\": \"@acme/host\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"main\": \"./dist/main.js\",\n  \"tsnx\": {\n    \"name\": \"Host\",\n    \"type\": \"webapi\"\n  },\n  \"dependencies\": {\n    \"@acme/inventory\": \"workspace:*\",\n    \"@tsnx/web\": \"1.2.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.13.9\"\n  }\n}",
         "language": "json",
         "filename": "Entrypoints/Host/package.json",
         "note": "Library projects use src/index.ts with main ./dist/index.js and types ./dist/index.d.ts in package.json. TypeScript references control build order; package dependencies make imports available at runtime."
@@ -2388,15 +2388,15 @@ export const docs: Doc[] = [
   },
   {
     "slug": "features",
-    "title": "v1.1 Feature Map & Release Overview",
+    "title": "v1.2 Feature Map & Release Overview",
     "group": "Reference",
-    "description": "Comprehensive overview of features, runtime contracts, and platform capabilities in TSNX v1.1.",
+    "description": "Comprehensive overview of features, runtime contracts, and platform capabilities in TSNX v1.2.",
     "source": "packages/web/src/index.ts",
     "sections": [
       {
         "id": "documentation-scope",
         "title": "Scope of these guides",
-        "text": "These guides describe the stable TSNX framework repository and package ecosystem (v1.1.0). Examples are checked against its exported TypeScript declarations and verified with end-to-end regression suites.",
+        "text": "These guides describe the stable TSNX framework repository and package ecosystem (v1.2.0). Examples are checked against its exported TypeScript declarations and verified with end-to-end regression suites.",
         "paragraphs": [
           "Implementation links and regression-test references accompany the guides. Source behavior takes precedence over older README examples, architecture proposals, and legacy samples. Where a feature is application-owned, the guide says so."
         ]
