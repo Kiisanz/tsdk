@@ -18,4 +18,6 @@ export {
   type IBindingBuilder,
   type IHostedServiceBindingBuilder,
   type IServiceCollection,
+  type IServiceInstaller,
+  type ServiceInstallerType,
 } from '@tsnx/hosting-abstractions';

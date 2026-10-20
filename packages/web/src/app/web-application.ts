@@ -10,6 +10,7 @@ import {
   HostOptions,
   Constructor,
   IServiceProvider,
+  ServiceInstallerType,
 } from '@tsnx/hosting';
 import { HttpContext } from '../http/http-context.js';
 import { RouteHandler, Results } from '../http/results.js';
@@ -117,6 +118,14 @@ export class WebApplicationBuilder {
 
   public addCors(configure?: (options: CorsOptions) => void): this {
     this.services.addCors(configure);
+    return this;
+  }
+
+  public install(
+    installerOrInstallers: ServiceInstallerType | readonly ServiceInstallerType[],
+    configuration?: IConfiguration
+  ): this {
+    this.services.install(installerOrInstallers as any, configuration ?? this.configuration);
     return this;
   }
 

@@ -1352,6 +1352,13 @@ export const docs: Doc[] = [
         "text": "Background work can create a short-lived scope from a root provider. Resolve scoped services inside it and await disposal in finally. Avoid keeping a request-scoped object in a singleton or in background work that outlives the request.",
         "filename": "Jobs/Batch.ts",
         "code": "import { ServiceCollection, createToken } from '@tsnx/hosting';\n\nconst Session = createToken<{ id: string }>('Session');\n\nconst services = new ServiceCollection();\n\nservices.addScoped(Session, () => ({ id: 'batch' }));\n\nconst provider = services.buildServiceProvider();\n\ntry {\n  const scope = provider.createScope();\n  try { console.log(scope.get(Session).id); }\n  finally { await scope.dispose(); }\n} finally { await provider.dispose(); }"
+      },
+      {
+        "id": "service-installers",
+        "title": "Modular architecture with IServiceInstaller",
+        "text": "Keep Program.ts clean and enforce module boundaries by implementing IServiceInstaller in each feature module. Register individual installers or arrays of installer classes on builder.install() or services.install().",
+        "filename": "src/Program.ts",
+        "code": "import { WebApplication } from '@tsnx/web';\nimport type { IServiceInstaller, IServiceCollection, IConfiguration } from '@tsnx/hosting';\n\nexport class InventoryInstaller implements IServiceInstaller {\n  install(services: IServiceCollection, config?: IConfiguration) {\n    services.addScoped(WarehouseRepositoryToken).toClass(MikroOrmWarehouseRepository);\n    services.addScoped(StockItemRepositoryToken).toClass(MikroOrmStockItemRepository);\n  }\n}\n\nconst builder = WebApplication.createBuilder();\n\n// Install modules cleanly in one call:\nbuilder.install([\n  InventoryInstaller,\n  IdentityInstaller,\n  OrderInstaller,\n]);\n\nconst app = builder.build();\nawait app.run();"
       }
     ],
     "sources": [
@@ -1821,6 +1828,68 @@ export const docs: Doc[] = [
       "dependency-injection",
       "hosted-services",
       "exception-handling"
+    ]
+  },
+  {
+    "slug": "mediator-and-cqrs",
+    "title": "Mediator & CQRS",
+    "group": "Application services",
+    "source": "packages/mediator/src/index.ts",
+    "description": "Enterprise-grade Mediator and CQRS pattern for TSNX with Scoped DI, Pipeline Behaviors, and Cancellation Tokens.",
+    "sections": [
+      {
+        "id": "overview",
+        "title": "Overview",
+        "text": "The @tsnx/mediator package provides an in-memory command, query, and event dispatcher modeled after Jimmy Bogard's MediatR in .NET. It enforces strict separation of concerns, decouples HTTP route handlers from application business logic, and executes cross-cutting concerns via pipeline behaviors.",
+        "paragraphs": [
+          "Unlike other TypeScript implementations that rely on decorators or global registries, @tsnx/mediator integrates directly with the @tsnx/hosting Scoped DI container. Handlers and pipeline behaviors are instantiated within the active HTTP request scope, ensuring Unit of Work and DbContext instances remain isolated."
+        ]
+      },
+      {
+        "id": "installation",
+        "title": "Installation",
+        "text": "Add the mediator package to your project:",
+        "language": "bash",
+        "code": "pnpm add @tsnx/mediator"
+      },
+      {
+        "id": "requests-and-handlers",
+        "title": "Commands, Queries, and Handlers",
+        "text": "Define requests by extending Request<TResponse>. Handlers implement IRequestHandler<TRequest, TResponse> and accept an optional cancellationToken (AbortSignal).",
+        "filename": "src/application/orders/create-order.command.ts",
+        "code": "import { Request, IRequestHandler } from '@tsnx/mediator';\nimport type { AppDbContext } from '../../data/app-db-context.js';\n\nexport interface CreateOrderInput {\n  customerId: string;\n  amount: number;\n}\n\nexport class CreateOrderCommand extends Request<{ orderId: string }> {\n  constructor(public readonly input: CreateOrderInput) {\n    super();\n  }\n}\n\nexport class CreateOrderHandler implements IRequestHandler<CreateOrderCommand, { orderId: string }> {\n  constructor(private readonly db: AppDbContext) {}\n\n  async handle(command: CreateOrderCommand, ct?: AbortSignal) {\n    // Business logic with native cancellation support\n    await this.db.saveChanges(ct);\n    return { orderId: 'ord_123' };\n  }\n}"
+      },
+      {
+        "id": "registration-and-di",
+        "title": "Registration & Dispatching",
+        "text": "Register mediator handlers using addMediator() or the builder.services.addMediator() extension. Dispatch commands from Minimal API endpoints using IMediator or ISender.",
+        "filename": "src/Program.ts",
+        "code": "import { WebApplication, Results, body, context } from '@tsnx/web';\nimport { addMediator, IMediator } from '@tsnx/mediator';\nimport { CreateOrderCommand, CreateOrderHandler } from './application/orders/create-order.command.js';\n\nconst builder = WebApplication.createBuilder();\n\n// Register mediator and handlers\naddMediator(builder.services, (options) => {\n  options.register(CreateOrderCommand, CreateOrderHandler);\n});\n\nconst app = builder.build();\n\napp.mapPost('/orders', [body(CreateOrderSchema), context()], async (input, ctx) => {\n  const mediator = ctx.services.get(IMediator);\n  const result = await mediator.send(\n    new CreateOrderCommand(input),\n    ctx.request.signal\n  );\n  return Results.created(result);\n});\n\nawait app.run();"
+      },
+      {
+        "id": "pipeline-behaviors",
+        "title": "Pipeline behaviors (Middleware)",
+        "text": "Pipeline behaviors wrap request execution using an Onion Architecture (await next()). Use them for logging, input validation, execution timing, and transaction management.",
+        "filename": "src/behaviors/logging.behavior.ts",
+        "code": "import type { IPipelineBehavior, RequestHandlerDelegate } from '@tsnx/mediator';\n\nexport class LoggingBehavior implements IPipelineBehavior {\n  async handle(request: any, next: RequestHandlerDelegate<any>, ct?: AbortSignal) {\n    const start = Date.now();\n    console.log(`[START] Executing ${request.constructor.name}`);\n\n    try {\n      const response = await next();\n      console.log(`[SUCCESS] ${request.constructor.name} completed in ${Date.now() - start}ms`);\n      return response;\n    } catch (err) {\n      console.error(`[FAILURE] ${request.constructor.name} failed:`, err);\n      throw err;\n    }\n  }\n}\n\n// Register in builder.services:\naddMediator(builder.services, (options) => {\n  options.addBehavior(LoggingBehavior);\n});"
+      },
+      {
+        "id": "domain-events-and-notifications",
+        "title": "Domain events and notifications",
+        "text": "Broadcast events to multiple independent handlers using Notification and INotificationHandler. Configure parallel or sequential dispatching strategy.",
+        "filename": "src/events/order-created.event.ts",
+        "code": "import { Notification, INotificationHandler, addMediator } from '@tsnx/mediator';\n\nexport class OrderCreatedEvent extends Notification {\n  constructor(public readonly orderId: string) {\n    super();\n  }\n}\n\nexport class SendConfirmationEmail implements INotificationHandler<OrderCreatedEvent> {\n  async handle(event: OrderCreatedEvent) { /* send email */ }\n}\n\nexport class UpdateInventoryStock implements INotificationHandler<OrderCreatedEvent> {\n  async handle(event: OrderCreatedEvent) { /* adjust inventory */ }\n}\n\n// Register notification and its handlers:\naddMediator(builder.services, (options) => {\n  options.registerNotification(\n    OrderCreatedEvent,\n    SendConfirmationEmail,\n    UpdateInventoryStock,\n  );\n});\n\n// Publish event from service:\nawait mediator.publish(new OrderCreatedEvent('ord_123'), cancellationToken);"
+      }
+    ],
+    "sources": [
+      "packages/mediator/src/index.ts",
+      "packages/mediator/src/mediator.ts",
+      "packages/mediator/src/__tests__/mediator.test.ts"
+    ],
+    "related": [
+      "dependency-injection",
+      "data-and-orm",
+      "routing"
     ]
   },
   {

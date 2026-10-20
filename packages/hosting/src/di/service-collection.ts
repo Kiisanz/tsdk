@@ -12,7 +12,10 @@ import {
   ServiceLifetime,
   ServiceProviderOptions,
   ServiceToken,
+  IServiceInstaller,
+  ServiceInstallerType,
 } from './types.js';
+import { IConfiguration } from '../config/types.js';
 import { HostedService, HOSTED_SERVICE_TOKEN } from '../hosted-services/types.js';
 import { ServiceProvider } from './service-provider.js';
 import { IOptionsBuilder } from '../options/types.js';
@@ -285,5 +288,30 @@ export class ServiceCollection implements IServiceCollection {
     const builder = new OptionsBuilder<T>(this, token);
     this.optionsBuilders.set(token, builder);
     return builder;
+  }
+
+  install(installer: ServiceInstallerType, configuration?: IConfiguration): this;
+  install(installers: readonly ServiceInstallerType[], configuration?: IConfiguration): this;
+  install(
+    installerOrInstallers: ServiceInstallerType | readonly ServiceInstallerType[],
+    configuration?: IConfiguration
+  ): this {
+    if (Array.isArray(installerOrInstallers)) {
+      for (const item of installerOrInstallers) {
+        this.runInstaller(item, configuration);
+      }
+    } else {
+      this.runInstaller(installerOrInstallers as ServiceInstallerType, configuration);
+    }
+    return this;
+  }
+
+  private runInstaller(item: ServiceInstallerType, configuration?: IConfiguration): void {
+    if (typeof item === 'function') {
+      const instance = new (item as new () => IServiceInstaller)();
+      instance.install(this, configuration);
+    } else if (item && typeof (item as IServiceInstaller).install === 'function') {
+      item.install(this, configuration);
+    }
   }
 }

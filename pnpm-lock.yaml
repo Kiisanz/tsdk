@@ -276,6 +276,19 @@ importers:
         specifier: ^22.13.9
         version: 22.20.5
 
+  packages/mediator:
+    dependencies:
+      '@tsnx/hosting-abstractions':
+        specifier: workspace:*
+        version: link:../hosting-abstractions
+    devDependencies:
+      '@tsnx/hosting':
+        specifier: workspace:*
+        version: link:../hosting
+      '@types/node':
+        specifier: ^22.13.9
+        version: 22.20.5
+
   packages/openapi:
     dependencies:
       '@tsnx/hosting':

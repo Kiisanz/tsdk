@@ -1,5 +1,6 @@
 import type { HostedService } from '../hosted-services/types.js';
 import type { IOptionsBuilder } from '../options/types.js';
+import type { IConfiguration } from '../config/types.js';
 
 export type ServiceLifetime = 'singleton' | 'scoped' | 'transient';
 
@@ -93,6 +94,12 @@ export interface IHostedServiceBindingBuilder {
   ): IServiceCollection;
 }
 
+export interface IServiceInstaller {
+  install(services: IServiceCollection, configuration?: IConfiguration): void;
+}
+
+export type ServiceInstallerType = IServiceInstaller | Constructor<IServiceInstaller>;
+
 export interface IServiceCollection extends Iterable<ServiceDescriptor> {
   readonly length: number;
   add<T>(descriptor: ServiceDescriptor<T>): this;
@@ -138,4 +145,8 @@ export interface IServiceCollection extends Iterable<ServiceDescriptor> {
 
   // Options Pattern
   configure<T>(token: InjectionToken<T> | ServiceToken<T> | string): IOptionsBuilder<T>;
+
+  // Service Installers
+  install(installer: ServiceInstallerType, configuration?: IConfiguration): this;
+  install(installers: readonly ServiceInstallerType[], configuration?: IConfiguration): this;
 }
