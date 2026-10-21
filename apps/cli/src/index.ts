@@ -11,6 +11,7 @@ import { runApp } from './commands/run.js';
 import { runTestCommand } from './commands/test.js';
 import { runWatchCommand } from './commands/watch.js';
 import { runWorkspace } from './commands/workspace.js';
+import { runOpenApi } from './commands/openapi.js';
 import { findContext } from './discovery.js';
 
 function printHelp(): void {
@@ -35,6 +36,7 @@ Commands:
   graph                      Visualize dependency relationships and build order
   ref add <target>           Add a project reference to current project
   ref remove <target>        Remove a project reference and workspace dependency
+  openapi export [options]   Export OpenAPI 3.1 specification to JSON (options: -o, -p, -u)
 
 Options:
   --workspace, -w            Operate on the entire workspace instead of current project
@@ -66,7 +68,7 @@ async function main(): Promise<void> {
   }
 
   // If help requested on a command that doesn't have its own help handler, show global help
-  const commandsWithSubHelp = ['create', 'workspace', 'ref'];
+  const commandsWithSubHelp = ['create', 'workspace', 'ref', 'openapi'];
   if (!commandsWithSubHelp.includes(command) && (rawArgs.includes('--help') || rawArgs.includes('-h'))) {
     printHelp();
     process.exit(0);
@@ -174,6 +176,10 @@ async function main(): Promise<void> {
         reportMissingContext(forceWorkspace);
       }
       exitCode = runGraph(context);
+      break;
+
+    case 'openapi':
+      exitCode = await runOpenApi(subCommand, rawArgs.slice(2), context);
       break;
 
     default:

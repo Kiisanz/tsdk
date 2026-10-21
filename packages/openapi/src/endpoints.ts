@@ -9,6 +9,7 @@ declare module '@tsnx/web' {
       pathOrOptions?: string | OpenApiOptions,
       maybeOptions?: OpenApiOptions,
     ): RouteHandlerBuilder;
+    exportOpenApi(outputPath: string, options?: OpenApiOptions): Promise<void>;
   }
 }
 
@@ -65,3 +66,33 @@ if (!(WebApplication.prototype as any).mapOpenApi) {
     return mapOpenApi(this, pathOrOptions, maybeOptions);
   };
 }
+
+(WebApplication.prototype as any).exportOpenApi = async function (
+  this: WebApplication,
+  outputPath: string,
+  options?: OpenApiOptions,
+): Promise<void> {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+
+  let diOptions: OpenApiOptions | undefined;
+  try {
+    diOptions = (this as any).servicesIfAvailable?.get(OPENAPI_OPTIONS);
+  } catch {
+    // Options not registered in DI
+  }
+
+  const mergedOptions: OpenApiOptions = {
+    ...diOptions,
+    ...options,
+    info: {
+      ...diOptions?.info,
+      ...options?.info,
+    },
+  };
+
+  const document = generateOpenApiDocument(this, mergedOptions);
+  const resolvedPath = path.resolve(process.cwd(), outputPath);
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+  await fs.writeFile(resolvedPath, JSON.stringify(document, null, 2), 'utf-8');
+};

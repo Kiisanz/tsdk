@@ -1254,6 +1254,54 @@ export const docs: Doc[] = [
         "code": "import { WebApplication } from '@tsnx/web';\nimport { mapOpenApi } from '@tsnx/openapi';\nimport { mapScalarApiReference } from '@tsnx/scalar';\n\nconst app = WebApplication.createBuilder().build();\n\nmapOpenApi(app, '/spec/inventory.json');\n\nmapScalarApiReference(app, {\n  endpoint: '/reference',\n  openApiRoute: '/spec/inventory.json',\n  title: 'Acme Inventory API',\n  theme: 'default',\n});"
       },
       {
+        "id": "export-openapi-cli",
+        "title": "Export OpenAPI specification (CLI & CI/CD)",
+        "text": "Extract your OpenAPI 3.1 specification to a static JSON file at build time or directly from a running server without writing boilerplate export scripts. Ideal for CI/CD pipelines, documentation artifacts, and API client generation.",
+        "paragraphs": [
+          "Running tsnx openapi export in a project directory builds the project and introspects its endpoints in-process without binding HTTP ports. You can also fetch live specifications using the --url flag."
+        ],
+        "code": "# 1. Build-time static export (in project directory)\ntsnx openapi export -o ./openapi.json\n\n# 2. Workspace export specifying target project\ntsnx openapi export --project Host -o ./dist/openapi.json\n\n# 3. Export from a running server\ntsnx openapi export --url http://localhost:3000/openapi/v1.json -o ./openapi.json",
+        "language": "bash",
+        "filename": "Terminal"
+      },
+      {
+        "id": "generate-api-clients",
+        "title": "Generate Typed API Clients",
+        "text": "OpenAPI is the universal contract for client generation. Instead of bespoke client generators, use industry-standard tools pointing to the exported OpenAPI JSON to generate type-safe clients for frontend and microservices.",
+        "paragraphs": [
+          "Because TSNX produces standard OpenAPI 3.1 with operationIds (.withName), tags (.withTags), and schemas (.produces), modern generators produce idiomatic, fully-typed code out of the box."
+        ],
+        "table": {
+          "headers": [
+            "Target Ecosystem",
+            "Recommended Tool",
+            "Generation Command"
+          ],
+          "rows": [
+            [
+              "TypeScript (Native Fetch / Axios)",
+              "@hey-api/openapi-ts",
+              "npx @hey-api/openapi-ts -i ./openapi.json -o ./src/api-client -c @hey-api/client-fetch"
+            ],
+            [
+              "React Query / Svelte / Vue",
+              "Orval",
+              "npx orval --input ./openapi.json --output ./src/api"
+            ],
+            [
+              "Multi-Language (C#, Go, Python, TS)",
+              "Microsoft Kiota",
+              "kiota generate -l TypeScript -d ./openapi.json -o ./client"
+            ],
+            [
+              "Any Backend (Java, PHP, Rust, etc.)",
+              "OpenAPI Generator",
+              "npx @openapitools/openapi-generator-cli generate -i ./openapi.json -g csharp -o ./sdk"
+            ]
+          ]
+        }
+      },
+      {
         "id": "openapi-generation-boundaries",
         "title": "OpenAPI generation boundaries",
         "text": "The generator skips the default OpenAPI route and paths beginning with /scalar or /swagger. Custom documentation paths are not universally detected, so inspect a generated document if you change those routes.",
@@ -2214,6 +2262,10 @@ export const docs: Doc[] = [
             [
               "tsnx ref add <target...>",
               "Add project reference(s) to the current project (dual-wiring)"
+            ],
+            [
+              "tsnx openapi export [output]",
+              "Export OpenAPI 3.1 specification to JSON (options: -o, -p, -u, --no-build)"
             ]
           ]
         }

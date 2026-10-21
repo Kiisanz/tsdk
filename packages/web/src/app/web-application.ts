@@ -690,6 +690,13 @@ export class WebApplication implements IEndpointRouteBuilder {
 
   public async start(): Promise<void> {
     await this.initHost();
+    if (process.env.TSNX_OPENAPI_EXPORT) {
+      await this.exportOpenApi(process.env.TSNX_OPENAPI_EXPORT);
+      if (process.env.TSNX_OPENAPI_EXPORT_EXIT === 'true') {
+        process.exit(0);
+      }
+      return;
+    }
     await this.appHost!.start();
   }
 
@@ -708,7 +715,76 @@ export class WebApplication implements IEndpointRouteBuilder {
 
   public async run(): Promise<void> {
     await this.initHost();
+    if (process.env.TSNX_OPENAPI_EXPORT) {
+      await this.exportOpenApi(process.env.TSNX_OPENAPI_EXPORT);
+      await this.dispose();
+      if (process.env.TSNX_OPENAPI_EXPORT_EXIT === 'true') {
+        process.exit(0);
+      }
+      return;
+    }
     await this.appHost!.run();
+  }
+
+  /**
+   * Generates and writes the OpenAPI specification to a file.
+   * Uses `@tsnx/openapi` if installed, otherwise produces a basic OpenAPI 3.1 specification.
+   */
+  public async exportOpenApi(outputPath: string): Promise<void> {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+
+    let doc: any;
+    try {
+      const openapiPkg = '@tsnx/openapi';
+      const openapiModule: any = await import(openapiPkg);
+      let diOptions: any;
+      try {
+        diOptions = this.servicesIfAvailable?.get(openapiModule.OPENAPI_OPTIONS);
+      } catch {
+        // Option not in DI
+      }
+      doc = openapiModule.generateOpenApiDocument(this, diOptions ?? {});
+    } catch {
+      doc = this.generateFallbackOpenApiDocument();
+    }
+
+    const resolvedPath = path.resolve(process.cwd(), outputPath);
+    await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+    await fs.writeFile(resolvedPath, JSON.stringify(doc, null, 2), 'utf-8');
+  }
+
+  private generateFallbackOpenApiDocument(): any {
+    const paths: Record<string, any> = {};
+    for (const ep of this.endpoints) {
+      if (
+        ep.pattern === '/openapi/v1.json' ||
+        ep.pattern.startsWith('/scalar') ||
+        ep.pattern.startsWith('/swagger')
+      ) {
+        continue;
+      }
+      const pathKey = ep.pattern.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
+      paths[pathKey] = paths[pathKey] || {};
+      const method = ep.method.toLowerCase();
+      paths[pathKey][method] = {
+        operationId: ep.builder?.getName(),
+        summary: ep.metadata.getSummary(),
+        description: ep.metadata.getDescription(),
+        tags: ep.metadata.getTags().length > 0 ? ep.metadata.getTags() : undefined,
+        responses: {
+          '200': { description: 'Successful response' },
+        },
+      };
+    }
+    return {
+      openapi: '3.1.0',
+      info: {
+        title: this.configuration?.get('App:Title') ?? 'TSNX API',
+        version: '1.0.0',
+      },
+      paths,
+    };
   }
 
   public async dispose(): Promise<void> {
