@@ -5,4 +5,4 @@ export * from './diagnostics/index.js';
 export * from './naming/index.js';
 export * from './utils/jsonc.js';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';

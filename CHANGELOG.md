@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-21
+
+### Added
+- **CLI OpenAPI Export Command (`tsnx openapi export`)**: Added CLI command to export OpenAPI 3.1 specifications to a JSON file at build time (in-process inspection without binding HTTP server ports) or from a live server URL (`--url`). Supports options `--output`, `--project`, `--no-build`, and `--no-pretty`.
+- **Programmatic OpenAPI Export (`app.exportOpenApi`)**: Added `exportOpenApi(outputPath)` on `WebApplication` and `@tsnx/openapi` prototype for exporting OpenAPI specifications directly from code or integration test suites.
+- **Client Generation Documentation**: Added guides and recipes for generating type-safe API clients across frontend and backend ecosystems (@hey-api/openapi-ts, Orval, Microsoft Kiota, and OpenAPI Generator).
+
+---
+
 ## [1.2.0] - 2026-10-20
 
 ### Added
