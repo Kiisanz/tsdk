@@ -4,7 +4,10 @@ import { ScalarOptions } from './types.js';
 
 declare module '@tsnx/web' {
   interface WebApplication {
-    mapScalarApiReference(options?: ScalarOptions): RouteHandlerBuilder;
+    mapScalarApiReference(
+      endpointOrOptions?: string | ScalarOptions,
+      maybeOptions?: ScalarOptions,
+    ): RouteHandlerBuilder;
   }
 }
 
@@ -16,10 +19,26 @@ declare module '@tsnx/web' {
  */
 export function mapScalarApiReference(
   app: WebApplication,
-  options: ScalarOptions = {},
+  endpointOrOptions?: string | ScalarOptions,
+  maybeOptions?: ScalarOptions,
 ): RouteHandlerBuilder {
-  const endpoint = options.endpoint ?? '/scalar/v1';
-  const html = renderScalarPage(options);
+  let endpoint = '/scalar/v1';
+  let options: ScalarOptions = {};
+
+  if (typeof endpointOrOptions === 'string') {
+    endpoint = endpointOrOptions;
+    options = maybeOptions ?? {};
+  } else if (endpointOrOptions && typeof endpointOrOptions === 'object') {
+    options = endpointOrOptions;
+    endpoint = options.endpoint ?? '/scalar/v1';
+  }
+
+  const effectiveOptions: ScalarOptions = {
+    ...options,
+    endpoint,
+  };
+
+  const html = renderScalarPage(effectiveOptions);
 
   return app.mapGet(endpoint, (_ctx: HttpContext) => {
     return Results.html(html);
@@ -27,11 +46,10 @@ export function mapScalarApiReference(
 }
 
 // Attach method to WebApplication prototype for idiomatic method chaining
-if (!(WebApplication.prototype as any).mapScalarApiReference) {
-  (WebApplication.prototype as any).mapScalarApiReference = function (
-    this: WebApplication,
-    options?: ScalarOptions,
-  ): RouteHandlerBuilder {
-    return mapScalarApiReference(this, options);
-  };
-}
+(WebApplication.prototype as any).mapScalarApiReference = function (
+  this: WebApplication,
+  endpointOrOptions?: string | ScalarOptions,
+  maybeOptions?: ScalarOptions,
+): RouteHandlerBuilder {
+  return mapScalarApiReference(this, endpointOrOptions, maybeOptions);
+};

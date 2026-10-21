@@ -726,6 +726,22 @@ export class WebApplication implements IEndpointRouteBuilder {
     await this.appHost!.run();
   }
 
+  public mapScalarApiReference(_endpointOrOptions?: any, _maybeOptions?: any): any {
+    throw new Error(
+      `[TSNX Error] "app.mapScalarApiReference()" requires the "@tsnx/scalar" package.\n\n` +
+      `Please ensure @tsnx/scalar is installed and add the following import at the top of your file:\n\n` +
+      `  import '@tsnx/scalar';\n`,
+    );
+  }
+
+  public mapOpenApi(_pathOrOptions?: any, _maybeOptions?: any): any {
+    throw new Error(
+      `[TSNX Error] "app.mapOpenApi()" requires the "@tsnx/openapi" package.\n\n` +
+      `Please ensure @tsnx/openapi is installed and add the following import at the top of your file:\n\n` +
+      `  import '@tsnx/openapi';\n`,
+    );
+  }
+
   /**
    * Generates and writes the OpenAPI specification to a file.
    * Uses `@tsnx/openapi` if installed, otherwise produces a basic OpenAPI 3.1 specification.
