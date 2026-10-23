@@ -12,6 +12,17 @@ import {
 } from '../config/index.js';
 
 describe('@tsnx/hosting: Configuration Pipeline', () => {
+  it('parses indexed environment variables as arrays', () => {
+    const config = new Configuration([
+      new EnvironmentVariablesConfigurationProvider('', {
+        Cors__AllowedOrigins__0: 'http://localhost:3000',
+        Cors__AllowedOrigins__1: 'https://app.com',
+      }),
+    ]);
+
+    assert.deepEqual(config.get('Cors:AllowedOrigins'), ['http://localhost:3000', 'https://app.com']);
+  });
+
   it('respects provider priority: defaults < json < env < cli', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsdk-cfg-'));
 

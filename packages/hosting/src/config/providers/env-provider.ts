@@ -32,16 +32,23 @@ export class EnvironmentVariablesConfigurationProvider implements IConfiguration
 
   private setDeepValue(obj: Record<string, any>, keyPath: string, value: any): void {
     const parts = keyPath.split(/[:.]/);
-    let current = obj;
+    let current: any = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-      if (!current[part] || typeof current[part] !== 'object') {
-        current[part] = {};
+      const nextPart = parts[i + 1];
+      const wantsArray = /^\d+$/.test(nextPart);
+      if (!current[part] || typeof current[part] !== 'object' || Array.isArray(current[part]) !== wantsArray) {
+        current[part] = wantsArray ? [] : {};
       }
       current = current[part];
     }
 
-    current[parts[parts.length - 1]] = value;
+    const lastPart = parts[parts.length - 1];
+    if (Array.isArray(current) && /^\d+$/.test(lastPart)) {
+      current[Number(lastPart)] = value;
+    } else {
+      current[lastPart] = value;
+    }
   }
 }
